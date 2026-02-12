@@ -17,9 +17,9 @@ function ExportPreview({ result }: { result: ExportResult }) {
   }
 
   function downloadAll() {
-    for (const file of result.files) {
-      downloadFile(file.filename, file.content);
-    }
+    result.files.forEach((file, index) => {
+      setTimeout(() => downloadFile(file.filename, file.content), index * 150);
+    });
   }
 
   return (
@@ -82,9 +82,9 @@ export default function VendorExport() {
     const exporter = exporters[selectedVendor];
     if (!exporter) return;
 
-    const hasConversations = state.conversations.length > 0;
-    const result = hasConversations
-      ? exporter.exportConversations(state.conversations, state.preferences)
+    const selectedConversations = state.conversations.filter((c) => c.selected);
+    const result = selectedConversations.length > 0
+      ? exporter.exportConversations(selectedConversations, state.preferences)
       : exporter.exportPreferences(state.preferences);
 
     setExportResult(result);

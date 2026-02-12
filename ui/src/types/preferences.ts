@@ -95,10 +95,11 @@ export interface PipelineState {
   conversationCount: number;
   messageCount: number;
   error?: string;
+  failedAtStage?: PipelineStage;
 }
 
 /** Supported AI vendors */
-export type VendorId = 'claude' | 'chatgpt' | 'gemini' | 'generic';
+export type VendorId = 'claude' | 'chatgpt' | 'gemini';
 
 export interface VendorInfo {
   id: VendorId;

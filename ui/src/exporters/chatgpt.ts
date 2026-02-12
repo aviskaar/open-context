@@ -123,13 +123,12 @@ export const chatgptExporter: VendorExporter = {
     };
   },
   exportConversations(conversations, preferences) {
-    const selected = conversations.filter((c) => c.selected);
     return {
       vendorId: 'chatgpt',
       files: [
         {
           filename: 'chatgpt-what-to-know.txt',
-          content: buildWhatToKnow(preferences, selected),
+          content: buildWhatToKnow(preferences, conversations),
           description: '"What would you like ChatGPT to know about you?"',
         },
         {

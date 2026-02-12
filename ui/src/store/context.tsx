@@ -98,8 +98,15 @@ function appReducer(state: AppState, action: AppAction): AppState {
         ...state,
         conversations: state.conversations.filter((c) => c.id !== action.payload),
       };
-    case 'SET_PIPELINE':
-      return { ...state, pipeline: { ...state.pipeline, ...action.payload } };
+    case 'SET_PIPELINE': {
+      const next = { ...state.pipeline, ...action.payload };
+      if (action.payload.stage === 'error' && !action.payload.failedAtStage) {
+        next.failedAtStage = state.pipeline.stage !== 'error'
+          ? state.pipeline.stage
+          : state.pipeline.failedAtStage;
+      }
+      return { ...state, pipeline: next };
+    }
     case 'RESET_PIPELINE':
       return { ...state, pipeline: defaultPipeline };
     default:

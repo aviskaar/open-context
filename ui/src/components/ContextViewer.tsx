@@ -203,7 +203,7 @@ function parseImportedData(data: unknown): NormalizedConversation[] {
   return conversations.map((conv, index) => {
     const messages = extractMessages(conv);
     return {
-      id: (conv.conversation_id as string) || `conv-${index}`,
+      id: (conv.id as string) || (conv.conversation_id as string) || `conv-${index}`,
       title: (conv.title as string) || `Conversation ${index + 1}`,
       created: conv.create_time
         ? new Date((conv.create_time as number) * 1000).toISOString()
@@ -221,22 +221,36 @@ function extractMessages(conv: Record<string, unknown>) {
   const mapping = conv.mapping as Record<string, Record<string, unknown>> | undefined;
   if (!mapping) return [];
 
+  // Follow the linear path from current_node back to the root using parent links,
+  // then reverse to get chronological order. This avoids including messages from
+  // abandoned edit branches.
+  const currentNodeId = conv.current_node as string | undefined;
+
+  let linearNodeIds: string[] = [];
+
+  if (currentNodeId && mapping[currentNodeId]) {
+    // Walk parent chain from current_node up to root
+    let nodeId: string | undefined = currentNodeId;
+    while (nodeId && mapping[nodeId]) {
+      linearNodeIds.push(nodeId);
+      nodeId = mapping[nodeId].parent as string | undefined;
+    }
+    linearNodeIds.reverse();
+  } else {
+    // Fallback: find root node and follow first child at each step
+    const rootId = Object.keys(mapping).find((id) => !mapping[id].parent);
+    if (!rootId) return [];
+    let nodeId: string | undefined = rootId;
+    while (nodeId && mapping[nodeId]) {
+      linearNodeIds.push(nodeId);
+      const children = (mapping[nodeId].children as string[]) || [];
+      nodeId = children[0];
+    }
+  }
+
   const messages: NormalizedConversation['messages'] = [];
 
-  // Walk the message tree using BFS
-  const rootIds = Object.keys(mapping).filter((id) => {
-    const node = mapping[id];
-    return !node.parent;
-  });
-
-  const queue = [...rootIds];
-  const visited = new Set<string>();
-
-  while (queue.length > 0) {
-    const nodeId = queue.shift()!;
-    if (visited.has(nodeId)) continue;
-    visited.add(nodeId);
-
+  for (const nodeId of linearNodeIds) {
     const node = mapping[nodeId];
     if (!node) continue;
 
@@ -264,9 +278,6 @@ function extractMessages(conv: Record<string, unknown>) {
         }
       }
     }
-
-    const children = (node.children as string[]) || [];
-    queue.push(...children);
   }
 
   return messages;

@@ -25,7 +25,9 @@ export default function ConversionPipeline() {
   const { state, dispatch } = useAppState();
   const { pipeline, conversations } = state;
 
-  const currentStageIndex = stageOrder.indexOf(pipeline.stage);
+  const effectiveStage =
+    pipeline.stage === 'error' ? pipeline.failedAtStage ?? 'uploading' : pipeline.stage;
+  const currentStageIndex = stageOrder.indexOf(effectiveStage);
 
   function resetPipeline() {
     dispatch({ type: 'RESET_PIPELINE' });
@@ -43,12 +45,10 @@ export default function ConversionPipeline() {
       <div className="pipeline-stages">
         {stageOrder.map((stage, index) => {
           let status: 'pending' | 'active' | 'done' | 'error' = 'pending';
-          if (pipeline.stage === 'error' && index <= currentStageIndex) {
-            status = index === currentStageIndex ? 'error' : 'done';
-          } else if (index < currentStageIndex) {
+          if (index < currentStageIndex) {
             status = 'done';
           } else if (index === currentStageIndex) {
-            status = 'active';
+            status = pipeline.stage === 'error' ? 'error' : 'active';
           }
 
           return (

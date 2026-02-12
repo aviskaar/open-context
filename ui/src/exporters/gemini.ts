@@ -93,13 +93,12 @@ export const geminiExporter: VendorExporter = {
     };
   },
   exportConversations(conversations, preferences) {
-    const selected = conversations.filter((c) => c.selected);
     return {
       vendorId: 'gemini',
       files: [
         {
           filename: 'gemini-instructions.txt',
-          content: buildGeminiInstructions(preferences, selected),
+          content: buildGeminiInstructions(preferences, conversations),
           description: 'Custom instructions for Google Gemini',
         },
       ],

@@ -77,7 +77,7 @@ function buildPreferencesDoc(prefs: UserPreferences): string {
     lines.push(prefs.customInstructions.trim());
   }
 
-  return lines.join(' ');
+  return lines.join('\n');
 }
 
 function buildMemoryDoc(prefs: UserPreferences, conversations: NormalizedConversation[]): string {
@@ -153,8 +153,7 @@ export const claudeExporter: VendorExporter = {
     };
   },
   exportConversations(conversations, preferences) {
-    const selected = conversations.filter((c) => c.selected);
-    const memory = buildMemoryDoc(preferences, selected);
+    const memory = buildMemoryDoc(preferences, conversations);
     const prefs = buildPreferencesDoc(preferences);
     return {
       vendorId: 'claude',
