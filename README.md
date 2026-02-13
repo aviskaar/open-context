@@ -56,7 +56,7 @@ When migrating from ChatGPT to Claude, you lose all context about your communica
 - 100% local processing
 - No external API calls
 - Your data never leaves your machine
-- Optional remote Ollama support
+- Dashboard privacy toggle blurs PII
 
 </td>
 </tr>
@@ -67,16 +67,16 @@ When migrating from ChatGPT to Claude, you lose all context about your communica
 - Parses complex conversation trees
 - Handles images and attachments
 - Preserves all metadata
-- Generates searchable index
+- Export to Claude, ChatGPT, or Gemini
 
 </td>
 <td width="50%">
 
-### ⚡ Fast & Flexible
-- Works with/without AI analysis
-- Multiple output formats
-- Remote GPU support
-- Configurable models
+### 🔌 MCP Server
+- Persistent context across Claude chats
+- Save, recall, search, and tag memories
+- Works with Claude Code & Claude Desktop
+- Local JSON store at `~/.opencontext/`
 
 </td>
 </tr>
@@ -88,7 +88,7 @@ When migrating from ChatGPT to Claude, you lose all context about your communica
 
 ### Prerequisites
 
-- **Node.js 18+** - [Download](https://nodejs.org/)
+- **Node.js 18+** (CLI/MCP), **Node.js 20+** (UI) - [Download](https://nodejs.org/)
 - **ChatGPT Export** - [How to export](#-getting-your-chatgpt-export)
 - **Ollama** (optional) - [Install](https://ollama.ai/) for AI analysis
 
@@ -99,14 +99,28 @@ When migrating from ChatGPT to Claude, you lose all context about your communica
 git clone https://github.com/yourusername/opencontext.git
 cd opencontext
 
-# Install dependencies
+# Install CLI/MCP dependencies
 npm install
 
 # Build the project
 npm run build
 ```
 
-### Basic Usage
+### Option A: Web UI (Recommended)
+
+```bash
+cd ui
+npm install
+npm run dev    # Opens at http://localhost:5173
+```
+
+The UI lets you:
+- Fill in your preferences interactively
+- Import ChatGPT conversations
+- Preview and export to Claude, ChatGPT, or Gemini formats
+- View your context dashboard with privacy toggle (hides PII when screensharing)
+
+### Option B: CLI
 
 ```bash
 # Convert your ChatGPT export
@@ -326,28 +340,103 @@ npm run test:coverage
 ### Project Structure
 
 ```
-src/
-├── index.ts                    # CLI entry point (Commander.js)
-├── extractor.ts                # ZIP extraction & temp management
-├── parsers/
-│   ├── types.ts                # TypeScript interfaces
-│   ├── chatgpt.ts              # Parse ChatGPT format
-│   └── normalizer.ts           # Normalize to common schema
-├── formatters/
-│   └── markdown.ts             # Markdown generation
-├── analyzers/
-│   └── ollama-preferences.ts   # AI-powered analysis (Ollama)
-└── utils/
-    └── file.ts                 # File I/O utilities
+opencontext/
+├── src/                        # CLI + MCP server
+│   ├── index.ts                # CLI entry point (Commander.js)
+│   ├── extractor.ts            # ZIP extraction & temp management
+│   ├── parsers/
+│   │   ├── types.ts            # TypeScript interfaces
+│   │   ├── chatgpt.ts          # Parse ChatGPT format
+│   │   └── normalizer.ts       # Normalize to common schema
+│   ├── formatters/
+│   │   └── markdown.ts         # Markdown generation
+│   ├── analyzers/
+│   │   └── ollama-preferences.ts  # AI-powered analysis (Ollama)
+│   ├── utils/
+│   │   └── file.ts             # File I/O utilities
+│   └── mcp/                    # MCP server
+│       ├── index.ts            # Entry point (stdio transport)
+│       ├── server.ts           # Tool definitions
+│       ├── store.ts            # JSON-based context store
+│       └── types.ts            # Type definitions
+│
+└── ui/                         # Web dashboard (React + Vite)
+    └── src/
+        ├── components/
+        │   ├── Dashboard.tsx       # Context overview + privacy toggle
+        │   ├── PreferencesEditor.tsx
+        │   ├── ContextViewer.tsx
+        │   ├── ConversionPipeline.tsx
+        │   └── VendorExport.tsx
+        ├── store/context.tsx       # React Context state
+        ├── types/preferences.ts   # Shared types
+        └── exporters/             # Claude, ChatGPT, Gemini exporters
 ```
 
 ### Tech Stack
 
-- **TypeScript** - Type-safe development
+- **TypeScript** - Type-safe development everywhere
 - **Commander.js** - CLI framework
 - **Ollama** - Local LLM inference
+- **@modelcontextprotocol/sdk** - MCP server
 - **adm-zip** - ZIP file handling
 - **chalk** - Terminal colors
+- **React 19 + Vite** - Web UI
+- **React Router 7** - UI routing
+- **Lucide React** - UI icons
+
+---
+
+## 🔌 MCP Server
+
+The **opencontext MCP server** lets Claude remember things across conversations using a persistent local store.
+
+### Available Tools
+
+| Tool | Trigger phrase |
+|------|---------------|
+| `save_context` | "remember this", "save this", "keep this in mind" |
+| `recall_context` | "what did I say about...", "do you remember..." |
+| `list_contexts` | "show my saved contexts" |
+| `search_contexts` | Multi-keyword AND search |
+| `update_context` | Update a context by ID |
+| `delete_context` | Delete a context by ID |
+
+Context is stored at `~/.opencontext/contexts.json`. Set `OPENCONTEXT_STORE_PATH` to use a custom location.
+
+### Connect to Claude Code
+
+```bash
+# Build first
+npm run build
+```
+
+Add to `~/.claude/settings.json`:
+```json
+{
+  "mcpServers": {
+    "opencontext": {
+      "command": "node",
+      "args": ["/path/to/opencontext/dist/mcp/index.js"]
+    }
+  }
+}
+```
+
+### Dev Mode (no build required)
+
+```json
+{
+  "mcpServers": {
+    "opencontext": {
+      "command": "npx",
+      "args": ["tsx", "/path/to/opencontext/src/mcp/index.ts"]
+    }
+  }
+}
+```
+
+The Dashboard page in the web UI shows this setup guide with copy buttons.
 
 ---
 
@@ -500,17 +589,18 @@ npm start -- convert export.zip --skip-preferences
 - [ ] Perplexity export support
 - [ ] Claude Projects API integration (when available)
 - [ ] Conversation search and filtering
-- [ ] Web UI for easier use
 - [ ] Better image handling (Base64 embedding)
-- [x] Automated tests
 - [ ] Multi-language support
+- [x] Web UI dashboard with privacy toggle
+- [x] MCP server for persistent context
+- [x] Export to Claude, ChatGPT, and Gemini formats
+- [x] Automated tests
 
 ### Future Possibilities
 
 - Direct Claude API integration
 - Conversation merging/combining
 - Custom prompt templates
-- Statistics dashboard
 - Browser extension
 
 **Vote on features:** [Discussions](https://github.com/yourusername/opencontext/discussions)

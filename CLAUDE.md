@@ -2,61 +2,159 @@
 
 ## Project Overview
 
-**opencontext** is a CLI tool that lets users take their full chat export from any AI provider (ChatGPT, Google Gemini, etc.) and convert it into a format compatible with Claude. The primary use case is onboarding to a fresh Claude account with your existing conversation history intact.
+**opencontext** is a tool that lets users migrate their full chat history from AI providers (ChatGPT, Google Gemini, etc.) into Claude-compatible formats. It ships as both a **CLI** and a **web UI**, and includes an **MCP server** so Claude itself can save and recall context across conversations.
 
 ### The Problem
 
-When users switch to Claude, they lose all their prior conversation context from other AI platforms. Chat exports from providers like ChatGPT come in provider-specific JSON formats that Claude can't read directly.
+When users switch to Claude, they lose all prior conversation context from other AI platforms. Chat exports from providers like ChatGPT come in provider-specific JSON formats that Claude can't read directly.
 
 ### The Solution
 
 opencontext reads exported conversation archives, normalizes them, and outputs Claude-compatible conversation data — so users can hit the ground running on a new Claude account with their full history.
 
-### Supported Sources (Planned)
+### Supported Sources
 
-- **ChatGPT** — `conversations.json` from the ChatGPT data export (Settings → Export data)
-- **Google Gemini** — Gemini activity export via Google Takeout
+- **ChatGPT** — `conversations.json` from the ChatGPT data export (Settings → Export data) ✅ Implemented
+- **Google Gemini** — Gemini activity export via Google Takeout (planned)
 - **Other providers** — Extensible parser system for adding new sources
 
-### Target Output
+### Components
 
-- Claude-compatible conversation format for import
+1. **CLI** (`src/`) — Node.js/TypeScript CLI for batch converting chat exports
+2. **Web UI** (`ui/`) — React + Vite dashboard for managing preferences, importing conversations, and exporting to multiple vendors
+3. **MCP server** (`src/mcp/`) — Model Context Protocol server that lets Claude save/recall persistent context
 
-## Repository Status
+---
 
-This is a greenfield project being actively bootstrapped.
-
-## Tech Stack (Planned)
-
-- **Language:** Node.js / TypeScript (or Python — TBD by initial implementation)
-- **Type:** CLI application
-- **Package manager:** npm or yarn (Node.js) / pip (Python)
-
-## Project Structure (Planned)
+## Repository Structure
 
 ```
 opencontext/
-├── CLAUDE.md              # This file — AI assistant guide
-├── README.md              # User-facing documentation
-├── package.json           # Project metadata and scripts
-├── src/
-│   ├── index.ts           # CLI entry point
-│   ├── parsers/           # Input format parsers
-│   │   ├── chatgpt.ts     # ChatGPT conversations.json parser
-│   │   ├── gemini.ts      # Google Gemini export parser
-│   │   └── base.ts        # Base parser interface
+├── CLAUDE.md                   # This file
+├── README.md                   # User-facing docs
+├── package.json                # CLI/MCP dependencies and scripts
+│
+├── src/                        # CLI + MCP server
+│   ├── index.ts                # CLI entry point (Commander.js)
+│   ├── extractor.ts            # ZIP extraction & temp file management
+│   ├── parsers/
+│   │   ├── types.ts            # TypeScript interfaces for parser output
+│   │   ├── chatgpt.ts          # ChatGPT conversations.json parser
+│   │   └── normalizer.ts       # Normalize parsed data to common schema
 │   ├── formatters/
-│   │   └── claude.ts      # Claude output formatter
-│   ├── types/             # Shared type definitions
-│   │   └── conversation.ts # Normalized conversation schema
-│   └── utils/             # Helpers (file I/O, validation, etc.)
-├── tests/                 # Test files
-│   ├── fixtures/          # Sample export files for testing
-│   ├── parsers/           # Parser tests
-│   └── formatters/        # Formatter tests
-└── .github/
-    └── workflows/         # CI/CD pipelines
+│   │   └── markdown.ts         # Markdown output formatter
+│   ├── analyzers/
+│   │   └── ollama-preferences.ts  # AI-powered preference analysis via Ollama
+│   ├── utils/
+│   │   └── file.ts             # File I/O utilities
+│   └── mcp/                    # MCP server
+│       ├── index.ts            # MCP entry point (stdio transport)
+│       ├── server.ts           # Tool definitions (save/recall/list/search/update/delete)
+│       ├── store.ts            # JSON file-based context store (~/.opencontext/contexts.json)
+│       └── types.ts            # ContextEntry, ContextStore types
+│
+├── ui/                         # Web UI (React + Vite)
+│   ├── package.json            # UI dependencies (React 19, React Router 7, Lucide)
+│   ├── vite.config.ts          # Vite build config
+│   ├── src/
+│   │   ├── main.tsx            # React app entry
+│   │   ├── App.tsx             # Router and route definitions
+│   │   ├── App.css             # All styles (dark theme, CSS variables)
+│   │   ├── index.css           # Global reset and CSS custom properties
+│   │   ├── components/
+│   │   │   ├── Layout.tsx          # App shell with sidebar nav
+│   │   │   ├── Dashboard.tsx       # Home page: context overview + privacy toggle + MCP setup
+│   │   │   ├── PreferencesEditor.tsx  # Full preferences form (6 sections)
+│   │   │   ├── ContextViewer.tsx   # Conversation import and management
+│   │   │   ├── ConversionPipeline.tsx # Pipeline progress visualization
+│   │   │   └── VendorExport.tsx    # Export to Claude/ChatGPT/Gemini
+│   │   ├── store/
+│   │   │   └── context.tsx         # React Context + useReducer state management
+│   │   ├── types/
+│   │   │   └── preferences.ts      # Shared TypeScript types
+│   │   └── exporters/
+│   │       ├── index.ts            # Exporter registry
+│   │       ├── base.ts             # VendorExporter interface
+│   │       ├── claude.ts           # Claude preferences/memory exporter
+│   │       ├── chatgpt.ts          # ChatGPT custom instructions exporter
+│   │       └── gemini.ts           # Gemini instructions exporter
+│
+└── tests/                      # CLI test suite (vitest)
+    └── ...
 ```
+
+---
+
+## Tech Stack
+
+### CLI / MCP Server (`src/`)
+- **Runtime**: Node.js 18+ / TypeScript 5.9
+- **CLI framework**: Commander.js
+- **MCP**: `@modelcontextprotocol/sdk`
+- **AI analysis**: Ollama (local LLM, optional)
+- **ZIP handling**: adm-zip
+- **Build**: `tsc`, run with `tsx` in dev
+
+### Web UI (`ui/`)
+- **Framework**: React 19 with TypeScript
+- **Build tool**: Vite 7 (requires Node 20+)
+- **Routing**: React Router DOM 7
+- **Icons**: Lucide React
+- **Styling**: Pure CSS with CSS custom properties (dark theme)
+- **State**: React Context + useReducer (no Redux/Zustand)
+- **No CSS framework** — all styles in `App.css` using BEM-like class names
+
+---
+
+## UI Routes
+
+| Path | Component | Description |
+|------|-----------|-------------|
+| `/` | Dashboard | Context snapshot, stats, privacy toggle, MCP setup guide |
+| `/preferences` | PreferencesEditor | Full 6-section preference form |
+| `/conversations` | ContextViewer | Import and manage conversations |
+| `/pipeline` | ConversionPipeline | Pipeline progress view |
+| `/export` | VendorExport | Export to Claude/ChatGPT/Gemini |
+
+---
+
+## MCP Server
+
+The MCP server (`src/mcp/`) provides 6 tools:
+
+| Tool | Description |
+|------|-------------|
+| `save_context` | Save a memory/note with optional tags and source |
+| `recall_context` | Full-text search across saved contexts |
+| `list_contexts` | List all contexts, optionally filtered by tag |
+| `search_contexts` | Multi-keyword AND search across all contexts |
+| `update_context` | Update content/tags of an existing context |
+| `delete_context` | Remove a context by ID |
+
+**Storage**: `~/.opencontext/contexts.json` (override with `OPENCONTEXT_STORE_PATH` env var)
+
+**Running**:
+```bash
+# Dev mode
+npm run mcp:server
+
+# Production (after build)
+node dist/mcp/index.js
+```
+
+**Claude Code integration** (`~/.claude/settings.json`):
+```json
+{
+  "mcpServers": {
+    "opencontext": {
+      "command": "node",
+      "args": ["PATH_TO_PROJECT/dist/mcp/index.js"]
+    }
+  }
+}
+```
+
+---
 
 ## Key Concepts
 
@@ -67,28 +165,93 @@ opencontext/
 [Gemini export]        →  Parser  ↗                        ↘
 ```
 
-All source formats are parsed into a single **normalized conversation schema**, then a Claude formatter outputs the final result. This keeps parsers and the formatter decoupled.
+All source formats are parsed into a single **normalized conversation schema**, then a Claude formatter outputs the final result.
 
 ### Normalized Conversation Schema
 
-The intermediate data model between parsing and formatting:
+- **Conversation** — `id`, `title`, `created`, `updated`, `messages[]`, `selected`
+- **Message** — `role` (`user` | `assistant` | `system`), `content`, `timestamp`, optional `images`, `metadata`
 
-- **Conversation** — title, creation timestamp, update timestamp, list of messages
-- **Message** — role (`user` | `assistant` | `system`), content blocks, timestamp
-- **Content** — text, code blocks, images/attachments (as references)
+### UI State Shape
 
-### Parsers (Source Providers)
+```typescript
+{
+  preferences: UserPreferences,       // Full preference tree
+  conversations: NormalizedConversation[],
+  pipeline: PipelineState
+}
+```
 
-Each source provider has a parser that knows how to read that provider's export format:
+### Privacy Toggle (Dashboard)
 
-- **ChatGPT**: Reads `conversations.json` — handles the nested message tree structure, maps `author.role` to standard roles, extracts text/code content parts
-- **Gemini**: Reads Google Takeout export — maps Gemini-specific activity data to conversations
+The Dashboard has an eye icon toggle that blurs personally-identifiable fields (role, industry, background, interests, focus, conversation titles) using CSS `filter: blur(5px)`. Useful for screensharing or when others are nearby. Tech profile (languages, frameworks, tools) and communication style are not considered PII and stay visible.
 
-Every parser implements a common interface and outputs the normalized schema.
+### Exporter Pattern
 
-### Formatter (Claude Output)
+```typescript
+interface VendorExporter {
+  info: VendorInfo
+  exportPreferences(preferences: UserPreferences): ExportResult
+  exportConversations(conversations, preferences): ExportResult
+}
+```
 
-The Claude formatter takes normalized conversations and produces Claude-compatible output. This is the only output target for now — the tool is purpose-built for migrating **to** Claude.
+Register new exporters in `ui/src/exporters/index.ts`.
+
+---
+
+## Development Workflow
+
+### CLI Development
+
+```bash
+npm install
+npm run dev convert path/to/chatgpt-export.zip
+npm run build
+npm test
+npm run test:coverage
+```
+
+### MCP Server Development
+
+```bash
+npm run mcp:server    # Start MCP server in dev mode
+npm run build         # Build for production use
+```
+
+### UI Development
+
+```bash
+cd ui
+npm install
+npm run dev           # Start Vite dev server
+npm run build         # Production build (requires Node 20+)
+npm run lint          # ESLint check
+```
+
+### Common Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm test` | Run CLI test suite (vitest) |
+| `npm run build` | Compile TypeScript (CLI + MCP) |
+| `npm run mcp:server` | Run MCP server in dev mode |
+| `cd ui && npm run dev` | Start UI dev server |
+| `cd ui && npm run build` | Build UI |
+
+---
+
+## Conventions for AI Assistants
+
+### Code Style
+
+- Keep functions small and focused
+- Use descriptive variable names — no abbreviations
+- Prefer explicit error handling over silent failures
+- Type all function parameters and return values
+- Handle malformed export data gracefully — users may have partial or corrupted exports
+- UI components: prefer pure CSS, do not introduce Tailwind or CSS-in-JS
+- No unnecessary abstractions — three similar lines beat a premature abstraction
 
 ### Adding a New Source Provider
 
@@ -99,53 +262,11 @@ The Claude formatter takes normalized conversations and produces Claude-compatib
 5. Write parser tests covering normal conversations, edge cases (empty messages, multimedia, long threads)
 6. Register the parser in the CLI argument handling
 
-## Development Workflow
+### Adding a New Vendor Exporter (UI)
 
-### Getting Started
-
-```bash
-# Install dependencies
-npm install
-
-# Convert a ChatGPT export to Claude format
-npm start -- --from chatgpt export/conversations.json -o claude_conversations.json
-
-# Run in development mode
-npm run dev
-```
-
-### Common Commands
-
-| Command          | Description                          |
-| ---------------- | ------------------------------------ |
-| `npm test`       | Run the test suite                   |
-| `npm run lint`   | Run linter                           |
-| `npm run build`  | Compile TypeScript (if applicable)   |
-| `npm start`      | Run the CLI                          |
-
-### Testing
-
-- Place test files in `tests/` or co-locate as `*.test.ts` next to source files
-- Keep sample export fixtures in `tests/fixtures/` — small, anonymized snippets
-- Run tests before committing: `npm test`
-- Parsers and the formatter are the core logic — prioritize test coverage there
-- Test edge cases: empty conversations, messages with only images, very long threads, special characters
-
-### Linting & Formatting
-
-- Follow the project's ESLint and Prettier configs
-- Run `npm run lint` before committing
-- Do not disable lint rules inline without clear justification
-
-## Conventions for AI Assistants
-
-### Code Style
-
-- Keep functions small and focused
-- Use descriptive variable names — no abbreviations
-- Prefer explicit error handling over silent failures
-- Type all function parameters and return values (if TypeScript)
-- Handle malformed export data gracefully — users may have partial or corrupted exports
+1. Create `ui/src/exporters/<vendor>.ts` implementing `VendorExporter`
+2. Register in `ui/src/exporters/index.ts`
+3. Add vendor card in `VendorExport.tsx`
 
 ### Commit Messages
 
@@ -161,15 +282,11 @@ npm run dev
 - Do not introduce breaking changes to the CLI interface without discussion
 - Do not commit generated files, build artifacts, or secrets
 - Do not include real user conversation data in tests — use anonymized fixtures only
-
-### PR Guidelines
-
-- Keep PRs focused — one feature or fix per PR
-- Include a summary of what changed and why
-- Ensure tests pass and linting is clean before requesting review
+- Do not add Tailwind, CSS-in-JS, or CSS modules to the UI — use the existing CSS variable system
 
 ### Privacy Considerations
 
 - Conversation exports contain personal data — never log, upload, or persist user content beyond the conversion output
 - Test fixtures must use synthetic/anonymized data
 - The tool runs entirely locally — no network calls
+- The UI dashboard privacy toggle blurs PII fields; keep this working when editing Dashboard.tsx
