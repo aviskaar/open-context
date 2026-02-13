@@ -3,7 +3,7 @@ import { existsSync, rmSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { randomUUID } from 'crypto';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { Client } from '@modelcontextprotocol/sdk/client';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createMcpServer } from '../../src/mcp/server.js';
 
@@ -213,6 +213,16 @@ describe('MCP Server', () => {
       const text = (result.content as Array<{ type: string; text: string }>)[0].text;
       expect(text).toContain('Found 1 context(s)');
       expect(text).toContain('React frontend');
+    });
+
+    it('should return no-match message when nothing found', async () => {
+      const result = await client.callTool({
+        name: 'search_contexts',
+        arguments: { query: 'completely nonexistent term' },
+      });
+
+      const text = (result.content as Array<{ type: string; text: string }>)[0].text;
+      expect(text).toContain('No contexts found matching');
     });
   });
 

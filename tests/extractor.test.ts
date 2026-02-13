@@ -3,19 +3,36 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import AdmZip from 'adm-zip';
-import { ZipExtractor } from '../src/extractor';
+
+// Mock fs so we can control rmSync for the warn-branch test.
+// Default behaviour calls through to the real implementation.
+vi.mock('fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs')>();
+  return {
+    ...actual,
+    rmSync: vi.fn(actual.rmSync),
+  };
+});
+
+// Import the module under test AFTER vi.mock is set up.
+const { ZipExtractor } = await import('../src/extractor');
+// Get a handle on the mocked rmSync so individual tests can override it.
+const { rmSync: mockedRmSync } = await import('fs');
 
 describe('ZipExtractor', () => {
-  let extractor: ZipExtractor;
+  let extractor: InstanceType<typeof ZipExtractor>;
   let testDir: string;
 
   beforeEach(() => {
     extractor = new ZipExtractor();
     testDir = join(tmpdir(), `extractor-test-${Date.now()}`);
     mkdirSync(testDir, { recursive: true });
+    vi.mocked(mockedRmSync).mockClear();
   });
 
   afterEach(() => {
+    vi.mocked(mockedRmSync).mockRestore();
+    // Re-apply real implementation after each test to avoid leaking mocks.
     if (existsSync(testDir)) {
       rmSync(testDir, { recursive: true, force: true });
     }
@@ -33,7 +50,6 @@ describe('ZipExtractor', () => {
       expect(existsSync(result.conversationsPath)).toBe(true);
       expect(result.tempDir).toBeTruthy();
 
-      // Cleanup
       extractor.cleanup(result.tempDir);
     });
 
@@ -121,8 +137,24 @@ describe('ZipExtractor', () => {
 
     it('handles errors gracefully without throwing', () => {
       const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      // Calling cleanup on nonexistent dir should not throw
       expect(() => extractor.cleanup('/nonexistent/dir')).not.toThrow();
+      consoleSpy.mockRestore();
+    });
+
+    it('logs a warning when rmSync throws', () => {
+      const tempDir = join(testDir, 'temp-throw');
+      mkdirSync(tempDir, { recursive: true });
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      vi.mocked(mockedRmSync).mockImplementationOnce(() => {
+        throw new Error('permission denied');
+      });
+
+      expect(() => extractor.cleanup(tempDir)).not.toThrow();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Warning: Failed to clean up')
+      );
+
       consoleSpy.mockRestore();
     });
   });

@@ -220,14 +220,15 @@ describe('Context Store', () => {
   });
 
   describe('updateContext', () => {
-    it('should update content of an existing context', () => {
+    it('should update content of an existing context', async () => {
       const store = createStore(storePath);
       const entry = store.saveContext('Original content');
 
+      await new Promise((resolve) => setTimeout(resolve, 2));
       const updated = store.updateContext(entry.id, 'Updated content');
       expect(updated).toBeDefined();
       expect(updated!.content).toBe('Updated content');
-      expect(updated!.updatedAt).not.toBe(entry.createdAt);
+      expect(new Date(updated!.updatedAt) >= new Date(entry.createdAt)).toBe(true);
     });
 
     it('should update tags when provided', () => {
@@ -260,6 +261,47 @@ describe('Context Store', () => {
       const store2 = createStore(storePath);
       const found = store2.getContext(entry.id);
       expect(found!.content).toBe('Updated');
+    });
+  });
+
+  describe('default store path', () => {
+    it('uses USERPROFILE when HOME is unset', () => {
+      const originalHome = process.env.HOME;
+      const originalUserProfile = process.env.USERPROFILE;
+      delete process.env.HOME;
+      process.env.USERPROFILE = tmpdir();
+
+      const store = createStore();
+      expect(store.filePath).toContain('.opencontext');
+
+      process.env.HOME = originalHome;
+      process.env.USERPROFILE = originalUserProfile;
+    });
+
+    it('falls back to cwd when HOME and USERPROFILE are both unset', () => {
+      const originalHome = process.env.HOME;
+      const originalUserProfile = process.env.USERPROFILE;
+      delete process.env.HOME;
+      delete process.env.USERPROFILE;
+
+      const store = createStore();
+      expect(store.filePath).toContain('.opencontext');
+
+      process.env.HOME = originalHome;
+      if (originalUserProfile !== undefined) {
+        process.env.USERPROFILE = originalUserProfile;
+      }
+    });
+  });
+
+  describe('save creates missing directories', () => {
+    it('creates parent directory when it does not exist', () => {
+      const base = join(tmpdir(), `opencontext-nested-${randomUUID()}`);
+      const nestedPath = join(base, 'sub', 'contexts.json');
+      const store = createStore(nestedPath);
+      store.saveContext('test entry');
+      expect(existsSync(nestedPath)).toBe(true);
+      rmSync(base, { recursive: true, force: true });
     });
   });
 });

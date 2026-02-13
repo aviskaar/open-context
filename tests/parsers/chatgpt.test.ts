@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { writeFileSync, mkdirSync, rmSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -93,6 +93,15 @@ describe('ChatGPTParser', () => {
 
     it('throws error when file does not exist', () => {
       expect(() => parser.parseConversations('/nonexistent/file.json')).toThrow();
+    });
+
+    it('re-throws non-Error exceptions from parsing', () => {
+      const filePath = join(testDir, 'conversations.json');
+      writeFileSync(filePath, '[]');
+      vi.spyOn(JSON, 'parse').mockImplementationOnce(() => { throw 'raw string error'; });
+
+      expect(() => parser.parseConversations(filePath)).toThrow('raw string error');
+      vi.restoreAllMocks();
     });
   });
 
