@@ -54,7 +54,10 @@ export default function Landing() {
     <div className="min-h-screen bg-background flex flex-col">
       {/* Top bar */}
       <header className="border-b border-border px-8 py-4 flex items-center justify-between">
-        <span className="text-base font-semibold tracking-tight text-foreground">opencontext</span>
+        <div className="flex items-center gap-2">
+          <img src="/opencontext-logo.png" alt="opencontext" className="w-6 h-6 rounded-sm" />
+          <span className="text-base font-semibold tracking-tight text-foreground">opencontext</span>
+        </div>
         <span className="text-xs text-muted-foreground">Portable AI preferences &amp; context</span>
       </header>
 
