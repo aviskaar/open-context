@@ -137,6 +137,21 @@ npm start -- convert path/to/chatgpt-export.zip
 
 That's it! 🎉 You now have files ready to paste into Claude.
 
+### Option C: Docker
+
+**Web UI**
+```bash
+docker build -f Dockerfile.ui -t opencontext-ui .
+docker run -p 5173:5173 opencontext-ui
+# Opens at http://localhost:5173
+```
+
+**MCP Server**
+```bash
+docker build -t opencontext-mcp .
+docker run -i -v opencontext-data:/root/.opencontext opencontext-mcp
+```
+
 ---
 
 ## 📂 What Gets Generated
@@ -443,6 +458,66 @@ Add to `~/.claude/settings.json`:
 ```
 
 The Dashboard page in the web UI shows this setup guide with copy buttons.
+
+---
+
+## 🐳 Docker
+
+Both the Web UI and MCP Server ship with Dockerfiles for containerized deployment.
+
+### Web UI
+
+Build and run the UI with a lightweight static server on port 5173:
+
+```bash
+# Build
+docker build -f Dockerfile.ui -t opencontext-ui .
+
+# Run
+docker run -p 5173:5173 opencontext-ui
+```
+
+Open [http://localhost:5173](http://localhost:5173) in your browser.
+
+### MCP Server
+
+The MCP server uses stdio transport and stores context in a named volume so data persists across container restarts.
+
+```bash
+# Build
+docker build -t opencontext-mcp .
+
+# Run (the -i flag is required for stdin/stdout communication)
+docker run -i -v opencontext-data:/root/.opencontext opencontext-mcp
+```
+
+To use a custom store path, pass the environment variable:
+
+```bash
+docker run -i \
+  -v opencontext-data:/data \
+  -e OPENCONTEXT_STORE_PATH=/data/contexts.json \
+  opencontext-mcp
+```
+
+#### Connect to Claude Code via Docker
+
+Add this to `~/.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "opencontext": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "-v", "opencontext-data:/root/.opencontext",
+        "opencontext-mcp"
+      ]
+    }
+  }
+}
+```
 
 ---
 
