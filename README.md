@@ -19,7 +19,7 @@
 
 <br/>
 
-![opencontext UI preview](docs/ui-preview.png)
+![opencontext UI preview](docs/dashboard.png)
 
 </div>
 
