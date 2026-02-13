@@ -12,6 +12,10 @@
 
 [Features](#-features) • [Quick Start](#-quick-start) • [Usage](#-usage) • [Documentation](#-documentation) • [Contributing](#-contributing)
 
+<br/>
+
+![opencontext UI preview](docs/ui-preview.png)
+
 </div>
 
 ---
