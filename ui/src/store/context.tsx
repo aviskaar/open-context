@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useReducer, type ReactNode } from 'react';
 import type {
   UserPreferences,
   NormalizedConversation,
@@ -112,12 +112,36 @@ const AppContext = createContext<{
   dispatch: React.Dispatch<AppAction>;
 } | null>(null);
 
+const STORAGE_KEY = 'opencontext';
+
+function loadPersistedState(): Pick<AppState, 'preferences' | 'conversations'> {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      return {
+        preferences: parsed.preferences ?? defaultPreferences,
+        conversations: parsed.conversations ?? [],
+      };
+    }
+  } catch {
+    // ignore corrupted storage
+  }
+  return { preferences: defaultPreferences, conversations: [] };
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(appReducer, {
-    preferences: defaultPreferences,
-    conversations: [],
+  const [state, dispatch] = useReducer(appReducer, undefined, () => ({
+    ...loadPersistedState(),
     pipeline: defaultPipeline,
-  });
+  }));
+
+  useEffect(() => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ preferences: state.preferences, conversations: state.conversations })
+    );
+  }, [state.preferences, state.conversations]);
 
   return (
     <AppContext.Provider value={{ state, dispatch }}>

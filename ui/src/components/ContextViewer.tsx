@@ -102,37 +102,73 @@ export default function ContextViewer() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
-  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const data = JSON.parse(event.target?.result as string);
-        const parsed = parseImportedData(data);
-        dispatch({ type: 'SET_CONVERSATIONS', payload: parsed });
-        dispatch({
-          type: 'SET_PIPELINE',
-          payload: {
-            stage: 'complete',
-            progress: 100,
-            message: `Loaded ${parsed.length} conversations`,
-            conversationCount: parsed.length,
-            messageCount: parsed.reduce((s, c) => s + c.messages.length, 0),
-          },
-        });
-      } catch {
-        dispatch({
-          type: 'SET_PIPELINE',
-          payload: {
-            stage: 'error',
-            message: 'Failed to parse file. Make sure it is a valid JSON export.',
-          },
-        });
-      }
-    };
-    reader.readAsText(file);
+    dispatch({
+      type: 'SET_PIPELINE',
+      payload: { stage: 'uploading', progress: 10, message: `Reading ${file.name}…` },
+    });
+
+    let text: string;
+    try {
+      text = await readFileAsText(file);
+    } catch {
+      dispatch({
+        type: 'SET_PIPELINE',
+        payload: { stage: 'error', progress: 0, message: 'Failed to read file.', error: 'Could not read the selected file.' },
+      });
+      return;
+    }
+
+    dispatch({
+      type: 'SET_PIPELINE',
+      payload: { stage: 'parsing', progress: 30, message: 'Parsing JSON structure…' },
+    });
+    await tick();
+
+    let data: unknown;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      dispatch({
+        type: 'SET_PIPELINE',
+        payload: { stage: 'error', progress: 30, message: 'Invalid JSON.', error: 'File is not valid JSON. Make sure you exported conversations.json correctly.' },
+      });
+      return;
+    }
+
+    dispatch({
+      type: 'SET_PIPELINE',
+      payload: { stage: 'normalizing', progress: 60, message: 'Normalizing conversations…' },
+    });
+    await tick();
+
+    try {
+      const parsed = parseImportedData(data);
+      dispatch({ type: 'SET_CONVERSATIONS', payload: parsed });
+      dispatch({
+        type: 'SET_PIPELINE',
+        payload: {
+          stage: 'complete',
+          progress: 100,
+          message: `Loaded ${parsed.length} conversations`,
+          conversationCount: parsed.length,
+          messageCount: parsed.reduce((s, c) => s + c.messages.length, 0),
+        },
+      });
+    } catch (err) {
+      dispatch({
+        type: 'SET_PIPELINE',
+        payload: {
+          stage: 'error',
+          progress: 60,
+          message: 'Failed to normalize conversations.',
+          error: err instanceof Error ? err.message : 'Unrecognized export format.',
+        },
+      });
+    }
   }
 
   const filtered = conversations.filter((c) =>
@@ -235,6 +271,19 @@ export default function ContextViewer() {
       )}
     </div>
   );
+}
+
+function readFileAsText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(e.target?.result as string);
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsText(file);
+  });
+}
+
+function tick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 150));
 }
 
 /** Minimal parser for ChatGPT conversations.json format */
