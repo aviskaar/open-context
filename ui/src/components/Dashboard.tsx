@@ -100,6 +100,8 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+type McpTab = 'node' | 'docker';
+
 const MCP_TOOLS = [
   { name: 'save_context', desc: 'Save a memory or note from chat' },
   { name: 'recall_context', desc: 'Search and retrieve saved contexts' },
@@ -110,7 +112,9 @@ const MCP_TOOLS = [
 ];
 
 function McpSection() {
-  const claudeCodeConfig = JSON.stringify(
+  const [tab, setTab] = useState<McpTab>('docker');
+
+  const nodeConfig = JSON.stringify(
     {
       mcpServers: {
         opencontext: {
@@ -129,6 +133,19 @@ function McpSection() {
         opencontext: {
           command: 'npx',
           args: ['tsx', 'PATH_TO_PROJECT/src/mcp/index.ts'],
+        },
+      },
+    },
+    null,
+    2,
+  );
+
+  const dockerConfig = JSON.stringify(
+    {
+      mcpServers: {
+        opencontext: {
+          command: 'docker',
+          args: ['run', '-i', '--rm', '-v', 'opencontext-data:/root/.opencontext', 'opencontext-mcp'],
         },
       },
     },
@@ -165,68 +182,154 @@ function McpSection() {
           ))}
         </div>
 
+        {/* Setup tabs */}
         <div className="flex flex-col gap-3 border-t border-border pt-3">
-          {/* Step 1 */}
-          <div className="flex gap-3 items-start">
-            <span className="bg-muted border border-border text-muted-foreground text-xs font-semibold w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-              1
-            </span>
-            <div className="flex-1 min-w-0 flex flex-col gap-1.5">
-              <p className="text-sm text-foreground">Build the project</p>
-              <div className="flex items-center gap-2 bg-background border border-border rounded-sm px-3 py-2 font-mono text-sm text-muted-foreground">
-                <code className="flex-1">npm run build</code>
-                <CopyButton text="npm run build" />
-              </div>
-            </div>
+          <div className="flex gap-1 bg-muted rounded-sm p-0.5">
+            {(['docker', 'node'] as McpTab[]).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`flex-1 text-xs py-1.5 rounded-sm font-medium transition-colors ${
+                  tab === t
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {t === 'docker' ? 'Docker' : 'Node.js'}
+              </button>
+            ))}
           </div>
 
-          {/* Step 2 */}
-          <div className="flex gap-3 items-start">
-            <span className="bg-muted border border-border text-muted-foreground text-xs font-semibold w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-              2
-            </span>
-            <div className="flex-1 min-w-0 flex flex-col gap-1.5">
-              <p className="text-sm text-foreground">
-                Add to <code className="bg-muted border border-border px-1.5 py-0.5 rounded-sm text-xs text-foreground">~/.claude/settings.json</code>
-              </p>
-              <div className="flex flex-col gap-2 bg-background border border-border rounded-sm px-3 py-2 font-mono text-xs text-muted-foreground">
-                <pre className="whitespace-pre-wrap break-all">{claudeCodeConfig}</pre>
-                <CopyButton text={claudeCodeConfig} />
+          {tab === 'docker' && (
+            <>
+              {/* Docker Step 1 */}
+              <div className="flex gap-3 items-start">
+                <span className="bg-muted border border-border text-muted-foreground text-xs font-semibold w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  1
+                </span>
+                <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                  <p className="text-sm text-foreground">Build the Docker image</p>
+                  <div className="flex items-center gap-2 bg-background border border-border rounded-sm px-3 py-2 font-mono text-sm text-muted-foreground">
+                    <code className="flex-1">docker build -t opencontext .</code>
+                    <CopyButton text="docker build -t opencontext ." />
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
 
-          {/* Alt step */}
-          <div className="flex gap-3 items-start">
-            <span className="bg-muted border border-border text-muted-foreground text-xs font-semibold w-8 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 px-1">
-              alt
-            </span>
-            <div className="flex-1 min-w-0 flex flex-col gap-1.5">
-              <p className="text-sm text-foreground">Or run in dev mode (no build needed)</p>
-              <div className="flex flex-col gap-2 bg-background border border-border rounded-sm px-3 py-2 font-mono text-xs text-muted-foreground">
-                <pre className="whitespace-pre-wrap break-all">{devConfig}</pre>
-                <CopyButton text={devConfig} />
+              {/* Docker Step 2 */}
+              <div className="flex gap-3 items-start">
+                <span className="bg-muted border border-border text-muted-foreground text-xs font-semibold w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  2
+                </span>
+                <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                  <p className="text-sm text-foreground">
+                    Add to{' '}
+                    <code className="bg-muted border border-border px-1.5 py-0.5 rounded-sm text-xs text-foreground">
+                      ~/.claude/settings.json
+                    </code>
+                  </p>
+                  <div className="flex flex-col gap-2 bg-background border border-border rounded-sm px-3 py-2 font-mono text-xs text-muted-foreground">
+                    <pre className="whitespace-pre-wrap break-all">{dockerConfig}</pre>
+                    <CopyButton text={dockerConfig} />
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
 
-          {/* Step 3 */}
-          <div className="flex gap-3 items-start">
-            <span className="bg-muted border border-border text-muted-foreground text-xs font-semibold w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-              3
-            </span>
-            <div className="flex-1 min-w-0 flex flex-col gap-1">
-              <p className="text-sm text-foreground">
-                Context is stored at{' '}
-                <code className="bg-muted border border-border px-1.5 py-0.5 rounded-sm text-xs text-foreground">~/.opencontext/contexts.json</code>
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Set{' '}
-                <code className="bg-muted border border-border px-1 py-0.5 rounded-sm text-xs">OPENCONTEXT_STORE_PATH</code>{' '}
-                env var to use a custom path.
-              </p>
-            </div>
-          </div>
+              {/* Docker Step 3 */}
+              <div className="flex gap-3 items-start">
+                <span className="bg-muted border border-border text-muted-foreground text-xs font-semibold w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  3
+                </span>
+                <div className="flex-1 min-w-0 flex flex-col gap-1">
+                  <p className="text-sm text-foreground">
+                    Context persists in the{' '}
+                    <code className="bg-muted border border-border px-1.5 py-0.5 rounded-sm text-xs text-foreground">
+                      opencontext-data
+                    </code>{' '}
+                    Docker named volume
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    The <code className="bg-muted border border-border px-1 py-0.5 rounded-sm text-xs">-i</code> flag
+                    is required — the MCP server communicates over stdin/stdout. Each Claude request
+                    spins up a short-lived container; the volume keeps data across runs.
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
+
+          {tab === 'node' && (
+            <>
+              {/* Node Step 1 */}
+              <div className="flex gap-3 items-start">
+                <span className="bg-muted border border-border text-muted-foreground text-xs font-semibold w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  1
+                </span>
+                <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                  <p className="text-sm text-foreground">Build the project</p>
+                  <div className="flex items-center gap-2 bg-background border border-border rounded-sm px-3 py-2 font-mono text-sm text-muted-foreground">
+                    <code className="flex-1">npm run build</code>
+                    <CopyButton text="npm run build" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Node Step 2 */}
+              <div className="flex gap-3 items-start">
+                <span className="bg-muted border border-border text-muted-foreground text-xs font-semibold w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  2
+                </span>
+                <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                  <p className="text-sm text-foreground">
+                    Add to{' '}
+                    <code className="bg-muted border border-border px-1.5 py-0.5 rounded-sm text-xs text-foreground">
+                      ~/.claude/settings.json
+                    </code>
+                  </p>
+                  <div className="flex flex-col gap-2 bg-background border border-border rounded-sm px-3 py-2 font-mono text-xs text-muted-foreground">
+                    <pre className="whitespace-pre-wrap break-all">{nodeConfig}</pre>
+                    <CopyButton text={nodeConfig} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Node Alt step */}
+              <div className="flex gap-3 items-start">
+                <span className="bg-muted border border-border text-muted-foreground text-xs font-semibold w-8 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 px-1">
+                  alt
+                </span>
+                <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                  <p className="text-sm text-foreground">Or run in dev mode (no build needed)</p>
+                  <div className="flex flex-col gap-2 bg-background border border-border rounded-sm px-3 py-2 font-mono text-xs text-muted-foreground">
+                    <pre className="whitespace-pre-wrap break-all">{devConfig}</pre>
+                    <CopyButton text={devConfig} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Node Step 3 */}
+              <div className="flex gap-3 items-start">
+                <span className="bg-muted border border-border text-muted-foreground text-xs font-semibold w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  3
+                </span>
+                <div className="flex-1 min-w-0 flex flex-col gap-1">
+                  <p className="text-sm text-foreground">
+                    Context is stored at{' '}
+                    <code className="bg-muted border border-border px-1.5 py-0.5 rounded-sm text-xs text-foreground">
+                      ~/.opencontext/contexts.json
+                    </code>
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Set{' '}
+                    <code className="bg-muted border border-border px-1 py-0.5 rounded-sm text-xs">
+                      OPENCONTEXT_STORE_PATH
+                    </code>{' '}
+                    env var to use a custom path.
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </CardContent>
     </Card>
