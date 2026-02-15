@@ -10,6 +10,10 @@ export function createMcpServer(storePath?: string) {
     version: '1.0.0',
   });
 
+  // ---------------------------------------------------------------------------
+  // Context tools
+  // ---------------------------------------------------------------------------
+
   server.tool(
     'save_context',
     'Save a piece of context, memory, or note. Use this when the user says "remember this", "save this", or "keep this in mind".',
@@ -23,18 +27,23 @@ export function createMcpServer(storePath?: string) {
         .string()
         .optional()
         .describe('Where this context came from (e.g. "chat", "code-review", "meeting")'),
+      bubbleId: z
+        .string()
+        .optional()
+        .describe('ID of the bubble (project) to associate this context with'),
     },
     async (args) => {
       const entry = store.saveContext(
         args.content,
         args.tags || [],
         args.source || 'chat',
+        args.bubbleId,
       );
       return {
         content: [
           {
             type: 'text' as const,
-            text: `Saved context with ID: ${entry.id}\nTags: ${entry.tags.length > 0 ? entry.tags.join(', ') : 'none'}\nCreated: ${entry.createdAt}`,
+            text: `Saved context with ID: ${entry.id}\nTags: ${entry.tags.length > 0 ? entry.tags.join(', ') : 'none'}${entry.bubbleId ? `\nBubble: ${entry.bubbleId}` : ''}\nCreated: ${entry.createdAt}`,
           },
         ],
       };
@@ -62,7 +71,7 @@ export function createMcpServer(storePath?: string) {
       const formatted = results
         .map(
           (entry) =>
-            `[${entry.id}] (${entry.tags.join(', ') || 'no tags'}) - ${entry.createdAt}\n${entry.content}`,
+            `[${entry.id}] (${entry.tags.join(', ') || 'no tags'})${entry.bubbleId ? ` [bubble:${entry.bubbleId}]` : ''} - ${entry.createdAt}\n${entry.content}`,
         )
         .join('\n\n---\n\n');
       return {
@@ -102,7 +111,7 @@ export function createMcpServer(storePath?: string) {
       const formatted = results
         .map(
           (entry) =>
-            `[${entry.id}] (${entry.tags.join(', ') || 'no tags'}) - ${entry.createdAt}\n${entry.content.substring(0, 100)}${entry.content.length > 100 ? '...' : ''}`,
+            `[${entry.id}] (${entry.tags.join(', ') || 'no tags'})${entry.bubbleId ? ` [bubble:${entry.bubbleId}]` : ''} - ${entry.createdAt}\n${entry.content.substring(0, 100)}${entry.content.length > 100 ? '...' : ''}`,
         )
         .join('\n\n');
       return {
@@ -160,7 +169,7 @@ export function createMcpServer(storePath?: string) {
       const formatted = results
         .map(
           (entry) =>
-            `[${entry.id}] (${entry.tags.join(', ') || 'no tags'}) - ${entry.createdAt}\n${entry.content}`,
+            `[${entry.id}] (${entry.tags.join(', ') || 'no tags'})${entry.bubbleId ? ` [bubble:${entry.bubbleId}]` : ''} - ${entry.createdAt}\n${entry.content}`,
         )
         .join('\n\n---\n\n');
       return {
@@ -184,9 +193,14 @@ export function createMcpServer(storePath?: string) {
         .array(z.string())
         .optional()
         .describe('New tags (replaces existing tags if provided)'),
+      bubbleId: z
+        .string()
+        .nullable()
+        .optional()
+        .describe('Bubble ID to assign (null to unassign from bubble)'),
     },
     async (args) => {
-      const updated = store.updateContext(args.id, args.content, args.tags);
+      const updated = store.updateContext(args.id, args.content, args.tags, args.bubbleId);
       if (!updated) {
         return {
           content: [
@@ -201,7 +215,145 @@ export function createMcpServer(storePath?: string) {
         content: [
           {
             type: 'text' as const,
-            text: `Context ${updated.id} updated.\nTags: ${updated.tags.length > 0 ? updated.tags.join(', ') : 'none'}\nUpdated: ${updated.updatedAt}`,
+            text: `Context ${updated.id} updated.\nTags: ${updated.tags.length > 0 ? updated.tags.join(', ') : 'none'}${updated.bubbleId ? `\nBubble: ${updated.bubbleId}` : ''}\nUpdated: ${updated.updatedAt}`,
+          },
+        ],
+      };
+    },
+  );
+
+  // ---------------------------------------------------------------------------
+  // Bubble tools
+  // ---------------------------------------------------------------------------
+
+  server.tool(
+    'create_bubble',
+    'Create a new bubble (project workspace) to group related contexts together.',
+    {
+      name: z.string().describe('The name of the bubble / project'),
+      description: z
+        .string()
+        .optional()
+        .describe('Optional description of what this bubble is for'),
+    },
+    async (args) => {
+      const bubble = store.createBubble(args.name, args.description);
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: `Created bubble "${bubble.name}" with ID: ${bubble.id}${bubble.description ? `\nDescription: ${bubble.description}` : ''}\nCreated: ${bubble.createdAt}`,
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    'list_bubbles',
+    'List all bubbles (project workspaces).',
+    {},
+    async () => {
+      const bubbles = store.listBubbles();
+      if (bubbles.length === 0) {
+        return {
+          content: [{ type: 'text' as const, text: 'No bubbles created yet.' }],
+        };
+      }
+      const formatted = bubbles
+        .map((b) => {
+          const contexts = store.listContextsByBubble(b.id);
+          return `[${b.id}] ${b.name}${b.description ? ` — ${b.description}` : ''} (${contexts.length} context${contexts.length === 1 ? '' : 's'})`;
+        })
+        .join('\n');
+      return {
+        content: [{ type: 'text' as const, text: `${bubbles.length} bubble(s):\n\n${formatted}` }],
+      };
+    },
+  );
+
+  server.tool(
+    'get_bubble',
+    'Get a bubble and all of its contexts.',
+    {
+      id: z.string().describe('The ID of the bubble'),
+    },
+    async (args) => {
+      const bubble = store.getBubble(args.id);
+      if (!bubble) {
+        return {
+          content: [{ type: 'text' as const, text: `No bubble found with ID "${args.id}".` }],
+        };
+      }
+      const contexts = store.listContextsByBubble(args.id);
+      const ctxText =
+        contexts.length === 0
+          ? 'No contexts in this bubble.'
+          : contexts
+              .map(
+                (e) =>
+                  `  [${e.id}] (${e.tags.join(', ') || 'no tags'}) - ${e.updatedAt}\n  ${e.content.substring(0, 150)}${e.content.length > 150 ? '...' : ''}`,
+              )
+              .join('\n\n');
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: `Bubble: ${bubble.name} [${bubble.id}]${bubble.description ? `\n${bubble.description}` : ''}\nCreated: ${bubble.createdAt} | Updated: ${bubble.updatedAt}\n\nContexts (${contexts.length}):\n${ctxText}`,
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    'update_bubble',
+    'Update the name or description of a bubble.',
+    {
+      id: z.string().describe('The ID of the bubble to update'),
+      name: z.string().describe('New name for the bubble'),
+      description: z
+        .string()
+        .optional()
+        .describe('New description (omit to leave unchanged)'),
+    },
+    async (args) => {
+      const updated = store.updateBubble(args.id, args.name, args.description);
+      if (!updated) {
+        return {
+          content: [{ type: 'text' as const, text: `No bubble found with ID "${args.id}".` }],
+        };
+      }
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: `Bubble ${updated.id} updated.\nName: ${updated.name}${updated.description ? `\nDescription: ${updated.description}` : ''}\nUpdated: ${updated.updatedAt}`,
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    'delete_bubble',
+    'Delete a bubble. Contexts inside the bubble are unassigned (not deleted) unless deleteContexts is true.',
+    {
+      id: z.string().describe('The ID of the bubble to delete'),
+      deleteContexts: z
+        .boolean()
+        .optional()
+        .describe('If true, also delete all contexts inside the bubble (default: false)'),
+    },
+    async (args) => {
+      const deleted = store.deleteBubble(args.id, args.deleteContexts ?? false);
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: deleted
+              ? `Bubble ${args.id} deleted.${args.deleteContexts ? ' All its contexts were also deleted.' : ' Its contexts have been unassigned.'}`
+              : `No bubble found with ID "${args.id}".`,
           },
         ],
       };

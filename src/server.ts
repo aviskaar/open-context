@@ -251,16 +251,17 @@ app.get('/api/contexts', (req: Request, res: Response) => {
 });
 
 app.post('/api/contexts', (req: Request, res: Response) => {
-  const { content, tags, source } = req.body as {
+  const { content, tags, source, bubbleId } = req.body as {
     content: string;
     tags?: string[];
     source?: string;
+    bubbleId?: string;
   };
   if (!content) {
     res.status(400).json({ error: 'content is required' });
     return;
   }
-  res.status(201).json(store.saveContext(content, tags, source));
+  res.status(201).json(store.saveContext(content, tags, source, bubbleId));
 });
 
 app.get('/api/contexts/search', (req: Request, res: Response) => {
@@ -282,12 +283,16 @@ app.get('/api/contexts/:id', (req: Request, res: Response) => {
 });
 
 app.put('/api/contexts/:id', (req: Request, res: Response) => {
-  const { content, tags } = req.body as { content: string; tags?: string[] };
+  const { content, tags, bubbleId } = req.body as {
+    content: string;
+    tags?: string[];
+    bubbleId?: string | null;
+  };
   if (!content) {
     res.status(400).json({ error: 'content is required' });
     return;
   }
-  const updated = store.updateContext(req.params['id'] as string, content, tags);
+  const updated = store.updateContext(req.params['id'] as string, content, tags, bubbleId);
   if (!updated) {
     res.status(404).json({ error: 'Not found' });
     return;
@@ -297,6 +302,73 @@ app.put('/api/contexts/:id', (req: Request, res: Response) => {
 
 app.delete('/api/contexts/:id', (req: Request, res: Response) => {
   const deleted = store.deleteContext(req.params['id'] as string);
+  if (!deleted) {
+    res.status(404).json({ error: 'Not found' });
+    return;
+  }
+  res.status(204).send();
+});
+
+// ---------------------------------------------------------------------------
+// Bubbles — CRUD for project workspaces
+// ---------------------------------------------------------------------------
+
+app.get('/api/bubbles', (_req: Request, res: Response) => {
+  const bubbles = store.listBubbles();
+  const withCounts = bubbles.map((b) => ({
+    ...b,
+    contextCount: store.listContextsByBubble(b.id).length,
+  }));
+  res.json(withCounts);
+});
+
+app.post('/api/bubbles', (req: Request, res: Response) => {
+  const { name, description } = req.body as { name: string; description?: string };
+  if (!name) {
+    res.status(400).json({ error: 'name is required' });
+    return;
+  }
+  res.status(201).json(store.createBubble(name, description));
+});
+
+app.get('/api/bubbles/:id', (req: Request, res: Response) => {
+  const bubble = store.getBubble(req.params['id'] as string);
+  if (!bubble) {
+    res.status(404).json({ error: 'Not found' });
+    return;
+  }
+  res.json({
+    ...bubble,
+    contextCount: store.listContextsByBubble(bubble.id).length,
+  });
+});
+
+app.get('/api/bubbles/:id/contexts', (req: Request, res: Response) => {
+  const bubble = store.getBubble(req.params['id'] as string);
+  if (!bubble) {
+    res.status(404).json({ error: 'Not found' });
+    return;
+  }
+  res.json(store.listContextsByBubble(req.params['id'] as string));
+});
+
+app.put('/api/bubbles/:id', (req: Request, res: Response) => {
+  const { name, description } = req.body as { name: string; description?: string };
+  if (!name) {
+    res.status(400).json({ error: 'name is required' });
+    return;
+  }
+  const updated = store.updateBubble(req.params['id'] as string, name, description);
+  if (!updated) {
+    res.status(404).json({ error: 'Not found' });
+    return;
+  }
+  res.json(updated);
+});
+
+app.delete('/api/bubbles/:id', (req: Request, res: Response) => {
+  const deleteContexts = req.query['deleteContexts'] === 'true';
+  const deleted = store.deleteBubble(req.params['id'] as string, deleteContexts);
   if (!deleted) {
     res.status(404).json({ error: 'Not found' });
     return;

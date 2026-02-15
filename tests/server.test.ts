@@ -15,6 +15,12 @@ const mockStore = vi.hoisted(() => ({
   getContext: vi.fn(),
   updateContext: vi.fn(),
   deleteContext: vi.fn(),
+  listContextsByBubble: vi.fn(),
+  listBubbles: vi.fn(),
+  getBubble: vi.fn(),
+  createBubble: vi.fn(),
+  updateBubble: vi.fn(),
+  deleteBubble: vi.fn(),
 }));
 
 vi.mock('../src/mcp/store.js', () => ({
@@ -265,7 +271,7 @@ describe('POST /api/contexts', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.id).toBe('abc-123');
-    expect(mockStore.saveContext).toHaveBeenCalledWith('Remember this', ['test'], 'chat');
+    expect(mockStore.saveContext).toHaveBeenCalledWith('Remember this', ['test'], 'chat', undefined);
   });
 
   it('returns 400 when content is missing', async () => {
@@ -344,7 +350,7 @@ describe('PUT /api/contexts/:id', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.content).toBe('Updated');
-    expect(mockStore.updateContext).toHaveBeenCalledWith('abc-123', 'Updated', ['new-tag']);
+    expect(mockStore.updateContext).toHaveBeenCalledWith('abc-123', 'Updated', ['new-tag'], undefined);
   });
 
   it('returns 400 when content is missing', async () => {

@@ -3,6 +3,15 @@ export interface ContextEntry {
   content: string;
   tags: string[];
   source: string;
+  bubbleId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Bubble {
+  id: string;
+  name: string;
+  description?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -10,4 +19,5 @@ export interface ContextEntry {
 export interface ContextStore {
   version: number;
   entries: ContextEntry[];
+  bubbles: Bubble[];
 }

@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { randomUUID } from 'crypto';
-import { ContextEntry, ContextStore } from './types.js';
+import { ContextEntry, ContextStore, Bubble } from './types.js';
 
 const STORE_VERSION = 1;
 
@@ -15,10 +15,15 @@ export function createStore(storePath?: string) {
 
   function load(): ContextStore {
     if (!existsSync(filePath)) {
-      return { version: STORE_VERSION, entries: [] };
+      return { version: STORE_VERSION, entries: [], bubbles: [] };
     }
     const raw = readFileSync(filePath, 'utf-8');
-    return JSON.parse(raw) as ContextStore;
+    const parsed = JSON.parse(raw) as ContextStore;
+    // Migrate stores that predate the bubbles field
+    if (!parsed.bubbles) {
+      parsed.bubbles = [];
+    }
+    return parsed;
   }
 
   function save(store: ContextStore): void {
@@ -29,10 +34,15 @@ export function createStore(storePath?: string) {
     writeFileSync(filePath, JSON.stringify(store, null, 2), 'utf-8');
   }
 
+  // ---------------------------------------------------------------------------
+  // Context CRUD
+  // ---------------------------------------------------------------------------
+
   function saveContext(
     content: string,
     tags: string[] = [],
     source: string = 'chat',
+    bubbleId?: string,
   ): ContextEntry {
     const store = load();
     const now = new Date().toISOString();
@@ -44,6 +54,9 @@ export function createStore(storePath?: string) {
       createdAt: now,
       updatedAt: now,
     };
+    if (bubbleId !== undefined) {
+      entry.bubbleId = bubbleId;
+    }
     store.entries.push(entry);
     save(store);
     return entry;
@@ -68,6 +81,11 @@ export function createStore(storePath?: string) {
     return store.entries.filter((entry) =>
       entry.tags.some((t) => t.toLowerCase() === lowerTag),
     );
+  }
+
+  function listContextsByBubble(bubbleId: string): ContextEntry[] {
+    const store = load();
+    return store.entries.filter((entry) => entry.bubbleId === bubbleId);
   }
 
   function deleteContext(id: string): boolean {
@@ -100,6 +118,7 @@ export function createStore(storePath?: string) {
     id: string,
     content: string,
     tags?: string[],
+    bubbleId?: string | null,
   ): ContextEntry | undefined {
     const store = load();
     const entry = store.entries.find((e) => e.id === id);
@@ -110,19 +129,100 @@ export function createStore(storePath?: string) {
     if (tags !== undefined) {
       entry.tags = tags;
     }
+    if (bubbleId !== undefined) {
+      if (bubbleId === null) {
+        delete entry.bubbleId;
+      } else {
+        entry.bubbleId = bubbleId;
+      }
+    }
     entry.updatedAt = new Date().toISOString();
     save(store);
     return entry;
   }
 
+  // ---------------------------------------------------------------------------
+  // Bubble CRUD
+  // ---------------------------------------------------------------------------
+
+  function createBubble(name: string, description?: string): Bubble {
+    const store = load();
+    const now = new Date().toISOString();
+    const bubble: Bubble = {
+      id: randomUUID(),
+      name,
+      createdAt: now,
+      updatedAt: now,
+    };
+    if (description !== undefined) {
+      bubble.description = description;
+    }
+    store.bubbles.push(bubble);
+    save(store);
+    return bubble;
+  }
+
+  function listBubbles(): Bubble[] {
+    return load().bubbles;
+  }
+
+  function getBubble(id: string): Bubble | undefined {
+    return load().bubbles.find((b) => b.id === id);
+  }
+
+  function updateBubble(id: string, name: string, description?: string): Bubble | undefined {
+    const store = load();
+    const bubble = store.bubbles.find((b) => b.id === id);
+    if (!bubble) {
+      return undefined;
+    }
+    bubble.name = name;
+    if (description !== undefined) {
+      bubble.description = description;
+    }
+    bubble.updatedAt = new Date().toISOString();
+    save(store);
+    return bubble;
+  }
+
+  function deleteBubble(id: string, deleteContexts = false): boolean {
+    const store = load();
+    const initialLength = store.bubbles.length;
+    store.bubbles = store.bubbles.filter((b) => b.id !== id);
+    if (store.bubbles.length === initialLength) {
+      return false;
+    }
+    if (deleteContexts) {
+      store.entries = store.entries.filter((e) => e.bubbleId !== id);
+    } else {
+      // Unassign contexts from the deleted bubble
+      store.entries.forEach((e) => {
+        if (e.bubbleId === id) {
+          delete e.bubbleId;
+        }
+      });
+    }
+    save(store);
+    return true;
+  }
+
   return {
+    // contexts
     saveContext,
     recallContext,
     listContexts,
+    listContextsByBubble,
     deleteContext,
     searchContexts,
     getContext,
     updateContext,
+    // bubbles
+    createBubble,
+    listBubbles,
+    getBubble,
+    updateBubble,
+    deleteBubble,
+    // internals
     load,
     filePath,
   };
