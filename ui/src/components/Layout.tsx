@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Settings, MessageSquare, GitBranch, Download, LogOut } from 'lucide-react';
+import { LayoutDashboard, Settings, MessageSquare, GitBranch, Download, LogOut, Brain } from 'lucide-react';
 import { useAuth } from '../store/auth';
 import { Button } from '@/components/ui/button';
 
@@ -9,6 +9,7 @@ const navItems = [
   { to: '/conversations', icon: MessageSquare, label: 'Conversations' },
   { to: '/pipeline', icon: GitBranch, label: 'Pipeline' },
   { to: '/export', icon: Download, label: 'Export' },
+  { to: '/contexts', icon: Brain, label: 'Contexts' },
 ];
 
 export default function Layout() {

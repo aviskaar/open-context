@@ -8,6 +8,7 @@ import PreferencesEditor from './components/PreferencesEditor';
 import ContextViewer from './components/ContextViewer';
 import ConversionPipeline from './components/ConversionPipeline';
 import VendorExport from './components/VendorExport';
+import ContextsManager from './components/ContextsManager';
 import './App.css';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -46,6 +47,7 @@ export default function App() {
               <Route path="conversations" element={<ContextViewer />} />
               <Route path="pipeline" element={<ConversionPipeline />} />
               <Route path="export" element={<VendorExport />} />
+              <Route path="contexts" element={<ContextsManager />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
