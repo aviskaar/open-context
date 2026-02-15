@@ -6,7 +6,9 @@
 
 # opencontext
 
-### Migrate your ChatGPT conversations to Claude with AI-powered analysis
+### Save your context, your way
+
+**Import** chat history from any AI platform · **Manage** context with MCP · **Export** to Claude, ChatGPT, or Gemini
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D25.0.0-brightgreen)](https://nodejs.org/)
@@ -28,22 +30,23 @@
 
 ## 📖 Overview
 
-**opencontext** is a CLI tool that converts ChatGPT conversation exports into Claude-compatible formats. It uses local AI (Ollama) to analyze your chat history and generate:
+**opencontext** is a tool for keeping your AI context portable and persistent. It lets you bring your full conversation history when switching AI assistants, and gives Claude a persistent memory through an MCP server.
 
-- **🎯 Preferences** - Your communication style for Claude's settings
-- **🧠 Memory** - Factual information for Claude's memory system
+- **🎯 Preferences** - AI-analyzed communication style ready for Claude's settings
+- **🧠 Memory** - Factual context about you, extracted from your chat history
 - **💬 Conversations** - All chats as readable markdown files
+- **🔌 MCP Server** - Persistent memory across every Claude conversation
 
 ### Why Use This?
 
-When migrating from ChatGPT to Claude, you lose all context about your communication preferences, background, and conversation history. This tool solves that by:
+Switching AI assistants means losing all prior context — your communication style, background, and conversation history. opencontext solves that by:
 
-1. Extracting your full ChatGPT history
-2. Analyzing your communication patterns with AI
-3. Generating Claude-ready files you can paste directly into settings
-4. Converting all conversations to portable markdown
+1. Importing your chat history from ChatGPT (Gemini support planned)
+2. Analyzing your patterns with local AI (Ollama) to generate preferences and memory
+3. Exporting to Claude, ChatGPT, or Gemini formats
+4. Providing an MCP server so Claude can save and recall context automatically
 
-**Result**: Claude knows who you are, how you communicate, and has access to your full chat history.
+**Result**: Claude knows who you are, how you communicate, and can persist new context across every conversation.
 
 ---
 
@@ -380,8 +383,9 @@ npm run test:coverage
 
 ```
 opencontext/
-├── src/                        # CLI + MCP server
+├── src/                        # CLI + HTTP server + MCP server
 │   ├── index.ts                # CLI entry point (Commander.js)
+│   ├── server.ts               # Express HTTP server (UI + REST API)
 │   ├── extractor.ts            # ZIP extraction & temp management
 │   ├── parsers/
 │   │   ├── types.ts            # TypeScript interfaces
@@ -863,7 +867,7 @@ copies of the Software...
 
 **Made with ❤️ by the AI community**
 
-*Seamlessly migrate from ChatGPT to Claude with all your context intact*
+*Save your context, your way — portable AI history across every platform*
 
 [Report Bug](https://github.com/adityak74/opencontext/issues) • [Request Feature](https://github.com/adityak74/opencontext/discussions) • [View Roadmap](https://github.com/adityak74/opencontext/projects)
 
