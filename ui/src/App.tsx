@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from './store/context';
-import { AuthProvider, useAuth } from './store/auth';
+import { AuthProvider } from './store/auth';
 import Layout from './components/Layout';
 import Landing from './components/Landing';
 import Dashboard from './components/Dashboard';
@@ -12,14 +12,9 @@ import ContextsManager from './components/ContextsManager';
 import BubblesManager from './components/BubblesManager';
 import './App.css';
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAuth();
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
-}
-
-function PublicRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAuth();
-  return isAuthenticated ? <Navigate to="/" replace /> : <>{children}</>;
+// Auth is not yet available — all protected routes redirect to the landing page.
+function ProtectedRoute() {
+  return <Navigate to="/login" replace />;
 }
 
 export default function App() {
@@ -28,20 +23,9 @@ export default function App() {
       <AppProvider>
         <BrowserRouter>
           <Routes>
+            <Route path="/login" element={<Landing />} />
             <Route
-              path="/login"
-              element={
-                <PublicRoute>
-                  <Landing />
-                </PublicRoute>
-              }
-            />
-            <Route
-              element={
-                <ProtectedRoute>
-                  <Layout />
-                </ProtectedRoute>
-              }
+              element={<ProtectedRoute />}
             >
               <Route index element={<Dashboard />} />
               <Route path="preferences" element={<PreferencesEditor />} />

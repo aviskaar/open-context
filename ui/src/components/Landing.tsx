@@ -1,10 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../store/auth';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent } from '@/components/ui/card';
 import {
   ArrowRight,
   Layers,
@@ -12,141 +7,15 @@ import {
   Brain,
   Terminal,
   GitBranch,
-  X,
   Zap,
   Package,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
-// Auth modal
-// ---------------------------------------------------------------------------
-
-function AuthModal({
-  mode,
-  onClose,
-}: {
-  mode: 'signin' | 'signup';
-  onClose: () => void;
-}) {
-  const { login } = useAuth();
-  const navigate = useNavigate();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    setTimeout(() => {
-      const ok = login(email, password);
-      if (ok) {
-        navigate('/');
-      } else {
-        setError('Please enter an email and password.');
-      }
-      setLoading(false);
-    }, 400);
-  }
-
-  return (
-    /* Backdrop */
-    <div
-      className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      role="dialog"
-      aria-modal="true"
-      aria-label={mode === 'signup' ? 'Create account' : 'Sign in'}
-    >
-      <Card className="bg-card border-border w-full max-w-sm shadow-2xl relative">
-        {/* Close */}
-        <button
-          onClick={onClose}
-          className="absolute top-3 right-3 text-muted-foreground hover:text-foreground transition-colors"
-          aria-label="Close"
-        >
-          <X size={16} />
-        </button>
-
-        <CardContent className="px-6 py-8">
-          {/* Logo inside modal */}
-          <div className="flex items-center gap-2 mb-6">
-            <img src="/opencontext-logo.png" alt="open-context" className="w-7 h-7 rounded-sm" />
-            <span className="text-sm font-semibold text-foreground tracking-tight">open-context</span>
-          </div>
-
-          <h2 className="text-lg font-semibold text-foreground mb-1">
-            {mode === 'signup' ? 'Create your account' : 'Welcome back'}
-          </h2>
-          <p className="text-sm text-muted-foreground mb-6">
-            {mode === 'signup'
-              ? 'Get started with open-context.'
-              : 'Sign in to your open-context workspace.'}
-          </p>
-
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="modal-email" className="text-xs text-muted-foreground">
-                Email
-              </Label>
-              <Input
-                id="modal-email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoComplete="email"
-                className="bg-input border-border text-foreground"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="modal-password" className="text-xs text-muted-foreground">
-                Password
-              </Label>
-              <Input
-                id="modal-password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-                className="bg-input border-border text-foreground"
-              />
-            </div>
-
-            {error && <p className="text-xs text-destructive">{error}</p>}
-
-            <Button
-              type="submit"
-              disabled={loading}
-              className="w-full gap-2 mt-1"
-            >
-              {loading ? (
-                <span className="animate-pulse">
-                  {mode === 'signup' ? 'Creating account…' : 'Signing in…'}
-                </span>
-              ) : (
-                <>
-                  {mode === 'signup' ? 'Create account' : 'Continue'}
-                  <ArrowRight size={14} />
-                </>
-              )}
-            </Button>
-
-            <p className="text-xs text-center text-muted-foreground">
-              Demo mode — any non-empty credentials work.
-            </p>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Data
 // ---------------------------------------------------------------------------
+
+const GITHUB_URL = 'https://github.com/adityak74/open-context';
 
 const FEATURES = [
   {
@@ -210,7 +79,6 @@ const MCP_SNIPPET = `{
 // ---------------------------------------------------------------------------
 
 export default function Landing() {
-  const [authMode, setAuthMode] = useState<'signin' | 'signup' | null>(null);
   const [copiedDocker, setCopiedDocker] = useState(false);
   const [copiedMcp, setCopiedMcp] = useState(false);
 
@@ -248,7 +116,7 @@ export default function Landing() {
           <a href="#how-it-works" className="hover:text-foreground transition-colors">How it works</a>
           <a href="#deploy" className="hover:text-foreground transition-colors">Deploy</a>
           <a
-            href="https://github.com/adityak74/opencontext"
+            href={GITHUB_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="hover:text-foreground transition-colors"
@@ -257,24 +125,12 @@ export default function Landing() {
           </a>
         </nav>
 
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-sm text-muted-foreground hover:text-foreground"
-            onClick={() => setAuthMode('signin')}
-          >
-            Sign in
-          </Button>
-          <Button
-            size="sm"
-            className="text-sm gap-1.5"
-            onClick={() => setAuthMode('signup')}
-          >
+        <Button size="sm" className="text-sm gap-1.5" asChild>
+          <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
             Get started
             <ArrowRight size={13} />
-          </Button>
-        </div>
+          </a>
+        </Button>
       </header>
 
       {/* ------------------------------------------------------------------ */}
@@ -298,9 +154,11 @@ export default function Landing() {
         </p>
 
         <div className="flex items-center gap-3 flex-wrap justify-center">
-          <Button size="lg" className="gap-2 text-base px-6" onClick={() => setAuthMode('signup')}>
-            Get started free
-            <ArrowRight size={16} />
+          <Button size="lg" className="gap-2 text-base px-6" asChild>
+            <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
+              Get started free
+              <ArrowRight size={16} />
+            </a>
           </Button>
           <Button
             size="lg"
@@ -308,7 +166,7 @@ export default function Landing() {
             className="gap-2 text-base px-6 border-border text-muted-foreground hover:text-foreground"
             asChild
           >
-            <a href="https://github.com/adityak74/opencontext" target="_blank" rel="noopener noreferrer">
+            <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
               View on GitHub
             </a>
           </Button>
@@ -463,9 +321,11 @@ export default function Landing() {
             open-context is free, open source, and runs entirely on your machine. No accounts, no cloud, no tracking.
           </p>
           <div className="flex items-center gap-3 flex-wrap justify-center">
-            <Button size="lg" className="gap-2 px-8 text-base" onClick={() => setAuthMode('signup')}>
-              Launch the app
-              <ArrowRight size={16} />
+            <Button size="lg" className="gap-2 px-8 text-base" asChild>
+              <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
+                View on GitHub
+                <ArrowRight size={16} />
+              </a>
             </Button>
             <Button
               size="lg"
@@ -473,8 +333,8 @@ export default function Landing() {
               className="gap-2 text-base px-8 border-border text-muted-foreground hover:text-foreground"
               asChild
             >
-              <a href="https://github.com/adityak74/opencontext" target="_blank" rel="noopener noreferrer">
-                Star on GitHub
+              <a href="https://hub.docker.com/r/adityakarnam/opencontext" target="_blank" rel="noopener noreferrer">
+                Docker Hub
               </a>
             </Button>
           </div>
@@ -493,7 +353,7 @@ export default function Landing() {
         </div>
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <a
-            href="https://github.com/adityak74/opencontext"
+            href={GITHUB_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="hover:text-foreground transition-colors"
@@ -511,13 +371,6 @@ export default function Landing() {
           <span>No data leaves your machine</span>
         </div>
       </footer>
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Auth modal                                                          */}
-      {/* ------------------------------------------------------------------ */}
-      {authMode !== null && (
-        <AuthModal mode={authMode} onClose={() => setAuthMode(null)} />
-      )}
     </div>
   );
 }
