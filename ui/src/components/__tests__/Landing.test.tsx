@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import Landing from '../Landing';
@@ -39,35 +39,71 @@ describe('Landing', () => {
 
     expect(screen.getByText('Your AI context,')).toBeInTheDocument();
     expect(screen.getByText('everywhere you go.')).toBeInTheDocument();
-    expect(screen.getByAltText('opencontext')).toBeInTheDocument();
+    // Multiple images share the alt text; getAllByAltText returns all of them
+    expect(screen.getAllByAltText('open-context').length).toBeGreaterThan(0);
   });
 
   it('should render all feature items', () => {
     renderWithProviders();
 
-    expect(screen.getByText('Portable context')).toBeInTheDocument();
-    expect(screen.getByText('Any-to-any migration')).toBeInTheDocument();
-    expect(screen.getByText('Fully local')).toBeInTheDocument();
+    expect(screen.getByText('Import from any platform')).toBeInTheDocument();
+    expect(screen.getByText('Export anywhere')).toBeInTheDocument();
+    expect(screen.getByText('MCP persistent memory')).toBeInTheDocument();
+    expect(screen.getByText('Bubbles — project workspaces')).toBeInTheDocument();
   });
 
-  it('should render login form', () => {
+  it('should render navbar with sign in and get started buttons', () => {
     renderWithProviders();
 
+    expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
+    // Multiple "Get started" buttons exist (navbar + hero), so check there is at least one
+    expect(screen.getAllByRole('button', { name: /get started/i }).length).toBeGreaterThan(0);
+  });
+
+  it('should open sign-in modal when Sign in is clicked', () => {
+    renderWithProviders();
+
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByLabelText('Email')).toBeInTheDocument();
     expect(screen.getByLabelText('Password')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /continue/i })).toBeInTheDocument();
+    expect(screen.getByText('Welcome back')).toBeInTheDocument();
   });
 
-  it('should handle email input', () => {
+  it('should open sign-up modal when Get started is clicked', () => {
     renderWithProviders();
+
+    fireEvent.click(screen.getAllByRole('button', { name: /get started/i })[0]);
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('Create your account')).toBeInTheDocument();
+  });
+
+  it('should close modal when X button is clicked', () => {
+    renderWithProviders();
+
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /close/i }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('should handle email input in modal', () => {
+    renderWithProviders();
+
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
     const emailInput = screen.getByLabelText('Email');
     fireEvent.change(emailInput, { target: { value: 'test@example.com' } });
     expect(emailInput).toHaveValue('test@example.com');
   });
 
-  it('should handle password input', () => {
+  it('should handle password input in modal', () => {
     renderWithProviders();
+
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
     const passwordInput = screen.getByLabelText('Password');
     fireEvent.change(passwordInput, { target: { value: 'password123' } });
@@ -76,6 +112,8 @@ describe('Landing', () => {
 
   it('should show loading state during form submission', async () => {
     renderWithProviders();
+
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
     const emailInput = screen.getByLabelText('Email');
     const passwordInput = screen.getByLabelText('Password');
@@ -91,19 +129,31 @@ describe('Landing', () => {
   it('should render footer', () => {
     renderWithProviders();
 
-    expect(screen.getByText('opencontext — open source, runs locally')).toBeInTheDocument();
+    expect(screen.getByText('open-context.dev — open source, self-hosted')).toBeInTheDocument();
     expect(screen.getByText('No data leaves your machine')).toBeInTheDocument();
   });
 
-  it('should render demo mode note', () => {
+  it('should render demo mode note in modal', () => {
     renderWithProviders();
+
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
     expect(screen.getByText('Demo mode — any non-empty credentials work.')).toBeInTheDocument();
   });
 
-  it('should have correct description text', () => {
+  it('should have correct hero description text', () => {
     renderWithProviders();
 
-    expect(screen.getByText(/opencontext migrates your full chat history/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/open-context migrates your full conversation history/i)
+    ).toBeInTheDocument();
+  });
+
+  it('should render how it works section', () => {
+    renderWithProviders();
+
+    expect(screen.getByText('Export your data')).toBeInTheDocument();
+    expect(screen.getByText('Import into open-context')).toBeInTheDocument();
+    expect(screen.getByText('Use it everywhere')).toBeInTheDocument();
   });
 });

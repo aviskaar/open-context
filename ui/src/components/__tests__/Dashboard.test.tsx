@@ -22,7 +22,7 @@ describe('Dashboard', () => {
   it('should render dashboard with main elements', () => {
     renderWithProviders();
 
-    expect(screen.getByAltText('opencontext')).toBeInTheDocument();
+    expect(screen.getByAltText('open-context')).toBeInTheDocument();
     expect(screen.getByText('Your Context')).toBeInTheDocument();
     expect(screen.getByText('Work & Personal')).toBeInTheDocument();
     expect(screen.getByText('Current Focus')).toBeInTheDocument();

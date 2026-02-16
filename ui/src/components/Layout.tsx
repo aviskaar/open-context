@@ -25,8 +25,8 @@ export default function Layout() {
   return (
     <div className="flex flex-col min-h-screen bg-background">
       <header className="border-b border-border px-6 py-3 flex items-center gap-3">
-        <img src="/opencontext-logo.png" alt="opencontext" className="w-6 h-6 rounded-sm" />
-        <span className="text-sm font-semibold tracking-tight text-foreground flex-1">opencontext</span>
+        <img src="/opencontext-logo.png" alt="open-context" className="w-6 h-6 rounded-sm" />
+        <span className="text-sm font-semibold tracking-tight text-foreground flex-1">open-context</span>
         <Button
           variant="ghost"
           size="sm"

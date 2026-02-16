@@ -327,7 +327,7 @@ export default function ContextsManager() {
         <div>
           <h2 className="text-xl font-semibold text-foreground">MCP Contexts</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Manage saved context entries used by the opencontext MCP server.
+            Manage saved context entries used by the open-context MCP server.
           </p>
         </div>
         <Button

@@ -117,7 +117,7 @@ function McpSection() {
   const nodeConfig = JSON.stringify(
     {
       mcpServers: {
-        opencontext: {
+        'open-context': {
           command: 'node',
           args: ['PATH_TO_PROJECT/dist/mcp/index.js'],
         },
@@ -130,7 +130,7 @@ function McpSection() {
   const devConfig = JSON.stringify(
     {
       mcpServers: {
-        opencontext: {
+        'open-context': {
           command: 'npx',
           args: ['tsx', 'PATH_TO_PROJECT/src/mcp/index.ts'],
         },
@@ -143,7 +143,7 @@ function McpSection() {
   const dockerConfig = JSON.stringify(
     {
       mcpServers: {
-        opencontext: {
+        'open-context': {
           command: 'docker',
           args: ['run', '-i', '--rm', '-v', 'opencontext-data:/root/.opencontext', 'opencontext-mcp'],
         },
@@ -161,12 +161,12 @@ function McpSection() {
           MCP Server
         </CardTitle>
         <span className="text-xs bg-secondary text-secondary-foreground border border-border px-2 py-0.5 rounded-full font-mono">
-          opencontext
+          open-context
         </span>
       </CardHeader>
       <CardContent className="p-4 flex flex-col gap-4">
         <p className="text-sm text-muted-foreground leading-relaxed">
-          Connect the <strong className="text-foreground">opencontext MCP server</strong> to Claude
+          Connect the <strong className="text-foreground">open-context MCP server</strong> to Claude
           Code or Claude Desktop so Claude can save and recall your context across conversations.
         </p>
 
@@ -390,8 +390,8 @@ export default function Dashboard() {
     <div className="flex flex-col gap-4">
       {/* Logo hero */}
       <div className="flex flex-col items-center gap-2 pt-2 pb-4">
-        <img src="/opencontext-logo.png" alt="opencontext" className="w-16 h-16" />
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">opencontext</h1>
+        <img src="/opencontext-logo.png" alt="open-context" className="w-16 h-16" />
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">open-context</h1>
         <p className="text-sm text-muted-foreground">Portable AI preferences &amp; context</p>
       </div>
 

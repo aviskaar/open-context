@@ -38,7 +38,7 @@ describe('Layout', () => {
       </Routes>
     );
 
-    expect(screen.getByText('opencontext')).toBeInTheDocument();
+    expect(screen.getByText('open-context')).toBeInTheDocument();
     expect(screen.getByText('Dashboard')).toBeInTheDocument();
     expect(screen.getByText('Preferences')).toBeInTheDocument();
     expect(screen.getByText('Conversations')).toBeInTheDocument();
@@ -110,7 +110,7 @@ describe('Layout', () => {
       </Routes>
     );
 
-    const logo = screen.getByAltText('opencontext');
+    const logo = screen.getByAltText('open-context');
     expect(logo).toBeInTheDocument();
     expect(logo).toHaveAttribute('src', '/opencontext-logo.png');
   });

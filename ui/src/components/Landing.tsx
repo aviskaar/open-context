@@ -4,31 +4,32 @@ import { useAuth } from '../store/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowRight, Layers, RefreshCw, Shield } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+  ArrowRight,
+  Layers,
+  RefreshCw,
+  Brain,
+  Terminal,
+  GitBranch,
+  X,
+  Zap,
+  Package,
+} from 'lucide-react';
 
-const FEATURES = [
-  {
-    icon: Layers,
-    title: 'Portable context',
-    desc: 'Carry your full AI conversation history across platforms — never start from scratch.',
-  },
-  {
-    icon: RefreshCw,
-    title: 'Any-to-any migration',
-    desc: 'Import from ChatGPT or Gemini and export to Claude, or any other vendor you choose.',
-  },
-  {
-    icon: Shield,
-    title: 'Fully local',
-    desc: 'Nothing leaves your machine. Your data stays yours, processed entirely offline.',
-  },
-];
+// ---------------------------------------------------------------------------
+// Auth modal
+// ---------------------------------------------------------------------------
 
-export default function Landing() {
+function AuthModal({
+  mode,
+  onClose,
+}: {
+  mode: 'signin' | 'signup';
+  onClose: () => void;
+}) {
   const { login } = useAuth();
   const navigate = useNavigate();
-
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -38,7 +39,6 @@ export default function Landing() {
     e.preventDefault();
     setError('');
     setLoading(true);
-
     setTimeout(() => {
       const ok = login(email, password);
       if (ok) {
@@ -51,130 +51,473 @@ export default function Landing() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* Top bar */}
-      <header className="border-b border-border px-8 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <img src="/opencontext-logo.png" alt="opencontext" className="w-6 h-6 rounded-sm" />
-          <span className="text-base font-semibold tracking-tight text-foreground">opencontext</span>
+    /* Backdrop */
+    <div
+      className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      role="dialog"
+      aria-modal="true"
+      aria-label={mode === 'signup' ? 'Create account' : 'Sign in'}
+    >
+      <Card className="bg-card border-border w-full max-w-sm shadow-2xl relative">
+        {/* Close */}
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 text-muted-foreground hover:text-foreground transition-colors"
+          aria-label="Close"
+        >
+          <X size={16} />
+        </button>
+
+        <CardContent className="px-6 py-8">
+          {/* Logo inside modal */}
+          <div className="flex items-center gap-2 mb-6">
+            <img src="/opencontext-logo.png" alt="open-context" className="w-7 h-7 rounded-sm" />
+            <span className="text-sm font-semibold text-foreground tracking-tight">open-context</span>
+          </div>
+
+          <h2 className="text-lg font-semibold text-foreground mb-1">
+            {mode === 'signup' ? 'Create your account' : 'Welcome back'}
+          </h2>
+          <p className="text-sm text-muted-foreground mb-6">
+            {mode === 'signup'
+              ? 'Get started with open-context.'
+              : 'Sign in to your open-context workspace.'}
+          </p>
+
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="modal-email" className="text-xs text-muted-foreground">
+                Email
+              </Label>
+              <Input
+                id="modal-email"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                className="bg-input border-border text-foreground"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="modal-password" className="text-xs text-muted-foreground">
+                Password
+              </Label>
+              <Input
+                id="modal-password"
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                className="bg-input border-border text-foreground"
+              />
+            </div>
+
+            {error && <p className="text-xs text-destructive">{error}</p>}
+
+            <Button
+              type="submit"
+              disabled={loading}
+              className="w-full gap-2 mt-1"
+            >
+              {loading ? (
+                <span className="animate-pulse">
+                  {mode === 'signup' ? 'Creating account…' : 'Signing in…'}
+                </span>
+              ) : (
+                <>
+                  {mode === 'signup' ? 'Create account' : 'Continue'}
+                  <ArrowRight size={14} />
+                </>
+              )}
+            </Button>
+
+            <p className="text-xs text-center text-muted-foreground">
+              Demo mode — any non-empty credentials work.
+            </p>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Data
+// ---------------------------------------------------------------------------
+
+const FEATURES = [
+  {
+    icon: RefreshCw,
+    title: 'Import from any platform',
+    desc: 'ChatGPT, Gemini — export your data and import it in seconds. Your full history, normalized.',
+  },
+  {
+    icon: Layers,
+    title: 'Export anywhere',
+    desc: 'Output to Claude, ChatGPT custom instructions, or Gemini. Carry your preferences across every AI.',
+  },
+  {
+    icon: Brain,
+    title: 'MCP persistent memory',
+    desc: 'Connect the MCP server to Claude Code or Claude Desktop. Save and recall context across every conversation.',
+  },
+  {
+    icon: GitBranch,
+    title: 'Bubbles — project workspaces',
+    desc: 'Organise contexts into projects. Group notes, decisions, and preferences by what they belong to.',
+  },
+];
+
+const HOW_IT_WORKS = [
+  {
+    step: '01',
+    title: 'Export your data',
+    desc: 'Request a data export from ChatGPT or Gemini. Takes about 30 seconds.',
+  },
+  {
+    step: '02',
+    title: 'Import into open-context',
+    desc: 'Drop your conversations.json into the UI. open-context normalises everything automatically.',
+  },
+  {
+    step: '03',
+    title: 'Use it everywhere',
+    desc: 'Export to your preferred AI, or connect the MCP server so Claude remembers you across every session.',
+  },
+];
+
+const DOCKER_CMD = 'docker run -p 3000:3000 -v opencontext-data:/root/.opencontext adityakarnam/opencontext:latest';
+
+const MCP_SNIPPET = `{
+  "mcpServers": {
+    "open-context": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "-v", "opencontext-data:/root/.opencontext",
+        "adityakarnam/opencontext:latest",
+        "node", "dist/mcp/index.js"
+      ]
+    }
+  }
+}`;
+
+// ---------------------------------------------------------------------------
+// Landing page
+// ---------------------------------------------------------------------------
+
+export default function Landing() {
+  const [authMode, setAuthMode] = useState<'signin' | 'signup' | null>(null);
+  const [copiedDocker, setCopiedDocker] = useState(false);
+  const [copiedMcp, setCopiedMcp] = useState(false);
+
+  function copyDocker() {
+    navigator.clipboard.writeText(DOCKER_CMD).then(() => {
+      setCopiedDocker(true);
+      setTimeout(() => setCopiedDocker(false), 1800);
+    });
+  }
+
+  function copyMcp() {
+    navigator.clipboard.writeText(MCP_SNIPPET).then(() => {
+      setCopiedMcp(true);
+      setTimeout(() => setCopiedMcp(false), 1800);
+    });
+  }
+
+  return (
+    <div className="min-h-screen bg-background text-foreground flex flex-col">
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Navbar                                                              */}
+      {/* ------------------------------------------------------------------ */}
+      <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur-sm px-6 md:px-12 py-3.5 flex items-center gap-6">
+        <div className="flex items-center gap-2 mr-auto">
+          <img src="/opencontext-logo.png" alt="open-context" className="w-6 h-6 rounded-sm" />
+          <span className="text-sm font-semibold tracking-tight text-foreground">open-context</span>
+          <span className="hidden sm:inline-block text-xs text-muted-foreground border border-border rounded-full px-2 py-0.5 ml-1">
+            open-context.dev
+          </span>
         </div>
-        <span className="text-xs text-muted-foreground">Portable AI preferences &amp; context</span>
+
+        <nav className="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
+          <a href="#features" className="hover:text-foreground transition-colors">Features</a>
+          <a href="#how-it-works" className="hover:text-foreground transition-colors">How it works</a>
+          <a href="#deploy" className="hover:text-foreground transition-colors">Deploy</a>
+          <a
+            href="https://github.com/adityak74/opencontext"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-foreground transition-colors"
+          >
+            GitHub
+          </a>
+        </nav>
+
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-sm text-muted-foreground hover:text-foreground"
+            onClick={() => setAuthMode('signin')}
+          >
+            Sign in
+          </Button>
+          <Button
+            size="sm"
+            className="text-sm gap-1.5"
+            onClick={() => setAuthMode('signup')}
+          >
+            Get started
+            <ArrowRight size={13} />
+          </Button>
+        </div>
       </header>
 
-      {/* Main */}
-      <div className="flex-1 flex items-center justify-center px-6 py-16">
-        <div className="w-full max-w-4xl grid grid-cols-1 gap-12 lg:grid-cols-2 lg:gap-20 items-center">
+      {/* ------------------------------------------------------------------ */}
+      {/* Hero                                                                */}
+      {/* ------------------------------------------------------------------ */}
+      <section className="flex flex-col items-center text-center px-6 pt-24 pb-20 md:pt-32 md:pb-28">
+        <div className="inline-flex items-center gap-2 border border-border rounded-full px-3 py-1 text-xs text-muted-foreground mb-8">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />
+          Open source · self-hosted · runs locally
+        </div>
 
-          {/* Left — hero */}
-          <div className="flex flex-col gap-8">
-            <div className="flex flex-col gap-4">
-              <h1 className="text-4xl font-semibold tracking-tight text-foreground leading-tight">
-                Your AI context,<br />
-                <span className="text-muted-foreground">everywhere you go.</span>
-              </h1>
-              <p className="text-base text-muted-foreground leading-relaxed">
-                opencontext migrates your full chat history and preferences from any AI platform
-                into a portable format — so Claude, ChatGPT, and Gemini all know who you are from
-                day one.
-              </p>
-            </div>
+        <h1 className="text-4xl sm:text-5xl md:text-6xl font-semibold tracking-tight leading-tight max-w-3xl mb-6">
+          Your AI context,{' '}
+          <span className="text-muted-foreground">
+            everywhere you go.
+          </span>
+        </h1>
 
-            <div className="flex flex-col gap-4">
-              {FEATURES.map(({ icon: Icon, title, desc }) => (
-                <div key={title} className="flex gap-3 items-start">
-                  <div className="w-8 h-8 rounded-md bg-muted border border-border flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <Icon size={14} className="text-muted-foreground" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{title}</p>
-                    <p className="text-sm text-muted-foreground leading-relaxed">{desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+        <p className="text-base sm:text-lg text-muted-foreground max-w-xl leading-relaxed mb-10">
+          open-context migrates your full conversation history and preferences from ChatGPT or Gemini — then keeps them alive across every Claude session via MCP.
+        </p>
+
+        <div className="flex items-center gap-3 flex-wrap justify-center">
+          <Button size="lg" className="gap-2 text-base px-6" onClick={() => setAuthMode('signup')}>
+            Get started free
+            <ArrowRight size={16} />
+          </Button>
+          <Button
+            size="lg"
+            variant="outline"
+            className="gap-2 text-base px-6 border-border text-muted-foreground hover:text-foreground"
+            asChild
+          >
+            <a href="https://github.com/adityak74/opencontext" target="_blank" rel="noopener noreferrer">
+              View on GitHub
+            </a>
+          </Button>
+        </div>
+
+        {/* Terminal snippet */}
+        <div className="mt-14 w-full max-w-2xl bg-card border border-border rounded-lg overflow-hidden text-left">
+          <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-border bg-muted/40">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
+            <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/60" />
+            <span className="w-2.5 h-2.5 rounded-full bg-green-500/60" />
+            <span className="ml-2 text-xs text-muted-foreground font-mono">terminal</span>
           </div>
-
-          {/* Right — login card */}
-          <div className="w-full">
-            <Card className="bg-card border-border">
-              <CardHeader className="px-6 pt-6 pb-4 border-b border-border">
-                <CardTitle className="text-base font-semibold text-foreground">
-                  Sign in to opencontext
-                </CardTitle>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Use any email and password to continue.
-                </p>
-              </CardHeader>
-              <CardContent className="px-6 py-6">
-                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="email" className="text-sm text-muted-foreground">
-                      Email
-                    </Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="you@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      autoComplete="email"
-                      className="bg-input border-border text-foreground"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="password" className="text-sm text-muted-foreground">
-                      Password
-                    </Label>
-                    <Input
-                      id="password"
-                      type="password"
-                      placeholder="••••••••"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      autoComplete="current-password"
-                      className="bg-input border-border text-foreground"
-                    />
-                  </div>
-
-                  {error && (
-                    <p className="text-sm text-destructive">{error}</p>
-                  )}
-
-                  <Button
-                    type="submit"
-                    disabled={loading}
-                    className="bg-primary text-primary-foreground hover:bg-primary/90 w-full gap-2 mt-1"
-                  >
-                    {loading ? (
-                      <span className="animate-pulse">Signing in…</span>
-                    ) : (
-                      <>
-                        Continue
-                        <ArrowRight size={15} />
-                      </>
-                    )}
-                  </Button>
-
-                  <p className="text-xs text-center text-muted-foreground pt-1">
-                    Demo mode — any non-empty credentials work.
-                  </p>
-                </form>
-              </CardContent>
-            </Card>
+          <div className="px-5 py-4 font-mono text-sm flex items-center justify-between gap-4">
+            <code className="text-muted-foreground break-all">
+              <span className="text-green-400 select-none">$ </span>
+              {DOCKER_CMD}
+            </code>
+            <button
+              onClick={copyDocker}
+              className="flex-shrink-0 text-xs text-muted-foreground hover:text-foreground border border-border rounded px-2 py-1 transition-colors"
+            >
+              {copiedDocker ? 'Copied!' : 'Copy'}
+            </button>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Footer */}
-      <footer className="border-t border-border px-8 py-4 flex items-center justify-between">
-        <span className="text-xs text-muted-foreground">
-          opencontext — open source, runs locally
-        </span>
-        <span className="text-xs text-muted-foreground">
-          No data leaves your machine
-        </span>
+      {/* ------------------------------------------------------------------ */}
+      {/* Features                                                            */}
+      {/* ------------------------------------------------------------------ */}
+      <section id="features" className="px-6 md:px-12 py-20 border-t border-border">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-14">
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">Features</p>
+            <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">
+              Everything context needs to be portable
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {FEATURES.map(({ icon: Icon, title, desc }) => (
+              <div
+                key={title}
+                className="bg-card border border-border rounded-lg p-6 flex flex-col gap-4"
+              >
+                <div className="w-9 h-9 rounded-md bg-muted border border-border flex items-center justify-center flex-shrink-0">
+                  <Icon size={16} className="text-muted-foreground" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground mb-1">{title}</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* How it works                                                        */}
+      {/* ------------------------------------------------------------------ */}
+      <section id="how-it-works" className="px-6 md:px-12 py-20 border-t border-border bg-muted/10">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-14">
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">How it works</p>
+            <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">
+              From ChatGPT to Claude in three steps
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {HOW_IT_WORKS.map(({ step, title, desc }) => (
+              <div key={step} className="flex flex-col gap-4">
+                <span className="text-4xl font-semibold text-muted-foreground/20 font-mono">{step}</span>
+                <h3 className="text-base font-semibold text-foreground">{title}</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">{desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Deploy / MCP snippet                                                */}
+      {/* ------------------------------------------------------------------ */}
+      <section id="deploy" className="px-6 md:px-12 py-20 border-t border-border">
+        <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+          <div className="flex flex-col gap-6">
+            <div className="w-10 h-10 rounded-md bg-muted border border-border flex items-center justify-center">
+              <Package size={18} className="text-muted-foreground" />
+            </div>
+            <h2 className="text-3xl font-semibold tracking-tight">
+              Self-hosted, zero lock-in
+            </h2>
+            <p className="text-muted-foreground leading-relaxed">
+              Run open-context on your own machine with one Docker command. Your data never leaves your infrastructure — not one byte.
+            </p>
+            <ul className="flex flex-col gap-2 text-sm text-muted-foreground">
+              {[
+                'Single Docker image — UI + API + MCP server',
+                'Persistent storage via named volume',
+                'MCP server works in stdio mode for Claude Code & Desktop',
+                'Override with OPENCONTEXT_STORE_PATH for custom paths',
+              ].map((item) => (
+                <li key={item} className="flex items-start gap-2">
+                  <Zap size={13} className="text-foreground mt-0.5 flex-shrink-0" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            {/* MCP config snippet */}
+            <div className="bg-card border border-border rounded-lg overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-muted/40">
+                <div className="flex items-center gap-2">
+                  <Terminal size={12} className="text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground font-mono">~/.claude/settings.json</span>
+                </div>
+                <button
+                  onClick={copyMcp}
+                  className="text-xs text-muted-foreground hover:text-foreground border border-border rounded px-2 py-0.5 transition-colors"
+                >
+                  {copiedMcp ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+              <pre className="px-5 py-4 font-mono text-xs text-muted-foreground overflow-x-auto leading-relaxed">
+                {MCP_SNIPPET}
+              </pre>
+            </div>
+            <p className="text-xs text-muted-foreground text-center">
+              Add this to Claude Code or Claude Desktop to enable persistent memory.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* CTA                                                                 */}
+      {/* ------------------------------------------------------------------ */}
+      <section className="px-6 md:px-12 py-24 border-t border-border text-center">
+        <div className="max-w-2xl mx-auto flex flex-col items-center gap-6">
+          <div className="w-12 h-12 rounded-xl bg-card border border-border flex items-center justify-center">
+            <img src="/opencontext-logo.png" alt="open-context" className="w-7 h-7 rounded-sm" />
+          </div>
+          <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">
+            Start with your context today
+          </h2>
+          <p className="text-muted-foreground text-base leading-relaxed">
+            open-context is free, open source, and runs entirely on your machine. No accounts, no cloud, no tracking.
+          </p>
+          <div className="flex items-center gap-3 flex-wrap justify-center">
+            <Button size="lg" className="gap-2 px-8 text-base" onClick={() => setAuthMode('signup')}>
+              Launch the app
+              <ArrowRight size={16} />
+            </Button>
+            <Button
+              size="lg"
+              variant="outline"
+              className="gap-2 text-base px-8 border-border text-muted-foreground hover:text-foreground"
+              asChild
+            >
+              <a href="https://github.com/adityak74/opencontext" target="_blank" rel="noopener noreferrer">
+                Star on GitHub
+              </a>
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Footer                                                              */}
+      {/* ------------------------------------------------------------------ */}
+      <footer className="border-t border-border px-6 md:px-12 py-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <img src="/opencontext-logo.png" alt="open-context" className="w-4 h-4 rounded-sm opacity-60" />
+          <span className="text-xs text-muted-foreground">
+            open-context.dev — open source, self-hosted
+          </span>
+        </div>
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          <a
+            href="https://github.com/adityak74/opencontext"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-foreground transition-colors"
+          >
+            GitHub
+          </a>
+          <a
+            href="https://hub.docker.com/r/adityakarnam/opencontext"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-foreground transition-colors"
+          >
+            Docker Hub
+          </a>
+          <span>No data leaves your machine</span>
+        </div>
       </footer>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Auth modal                                                          */}
+      {/* ------------------------------------------------------------------ */}
+      {authMode !== null && (
+        <AuthModal mode={authMode} onClose={() => setAuthMode(null)} />
+      )}
     </div>
   );
 }
