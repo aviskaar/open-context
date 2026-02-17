@@ -150,7 +150,7 @@ export default function Landing() {
         </h1>
 
         <p className="text-base sm:text-lg text-muted-foreground max-w-xl leading-relaxed mb-10">
-          open-context migrates your full conversation history and preferences from ChatGPT or Gemini — then keeps them alive across every Claude session via MCP.
+          Save your context, your way — import chat history from any AI platform, manage it locally, and export to Claude, ChatGPT, or Gemini
         </p>
 
         <div className="flex items-center gap-3 flex-wrap justify-center">
