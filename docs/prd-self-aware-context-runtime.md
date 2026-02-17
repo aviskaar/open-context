@@ -773,7 +773,243 @@ No new configuration surfaces — reuses the existing environment variables and 
 
 ---
 
-## 8. Putting It Together: Agent Interaction Flow
+## 8. Process Model: How Continuous Analysis Runs
+
+### 8.1 The Problem
+
+Today, both the HTTP server and MCP server are purely request-response — zero background work, zero `setInterval`, zero scheduled tasks. But the self-aware runtime needs continuous behavior:
+
+- **Observation summaries** need to be periodically rolled up
+- **Ollama analysis** (contradictions, schema suggestions) shouldn't block agent requests
+- **Stale entry detection** should happen proactively, not only when someone asks
+- **Cache invalidation** needs to happen on a schedule
+
+Where does this work live?
+
+### 8.2 Design Decision: No New Daemon
+
+We are **not** introducing a third long-running process. Reasons:
+
+1. **Operational complexity** — users already manage HTTP server + MCP server. A third daemon adds config, monitoring, and failure modes.
+2. **Docker complexity** — the single-image model (one CMD) is clean. A background daemon means process supervision (supervisord, tini, etc.).
+3. **Overkill for v1** — the volume of background work is small. We don't need a job queue or worker pool.
+
+### 8.3 Approach: Three-Layer Strategy
+
+```
+Layer 1: On-demand (immediate, request-driven)
+  ↓ most work happens here
+Layer 2: Write-triggered (piggyback on mutations)
+  ↓ lightweight, automatic
+Layer 3: Tick-based (periodic, on the HTTP server)
+  ↓ optional, for proactive analysis
+```
+
+#### Layer 1: On-Demand Computation (default)
+
+Most analysis is **computed when requested**, not continuously:
+
+```
+Agent calls introspect()
+  → buildSelfModel() runs synchronously
+  → Returns in <100ms (deterministic mode)
+  → Cached for 60s (repeated calls within window return cached result)
+
+Agent calls introspect(deep=true)
+  → Check cache (TTL: 1 hour for deep analysis)
+  → Cache hit: return cached result instantly
+  → Cache miss: run Ollama analysis, cache result, return
+  → Ollama unavailable: fall back to deterministic, return that
+```
+
+This covers the primary use case — agents call `introspect` at session start and get a result. No daemon needed.
+
+**For the MCP server**: this is the **only** layer. The MCP server stays purely request-response. It never does background work. All self-awareness is computed on-demand when agents call tools.
+
+#### Layer 2: Write-Triggered Analysis (piggyback on mutations)
+
+When the store is mutated (save, update, delete), the observer logs the event. On certain mutations, we **piggyback lightweight analysis**:
+
+```typescript
+// In store.ts, after saveContext or saveTypedContext:
+observer.log({ action: 'write', ... })
+
+// Every N writes (configurable, default: 10), trigger a lightweight re-evaluation:
+if (observer.getSummary().totalWrites % 10 === 0) {
+  // Async, non-blocking — fire and forget
+  awareness.refreshCache(store, schema, observer).catch(() => {})
+}
+```
+
+`refreshCache` recomputes the deterministic self-model and writes it to `awareness.json`. This means the cached self-model stays reasonably fresh without any background loop — it's refreshed as a side-effect of normal write activity.
+
+**Cost**: ~50ms of extra computation on every 10th write. Imperceptible.
+
+**For Ollama analysis**: write-triggered work does **not** call Ollama. Ollama analysis is only triggered by explicit requests (`deep=true`, `analyze_contradictions`, etc.) or by the optional tick loop (Layer 3). This keeps mutation paths fast.
+
+#### Layer 3: Tick-Based Background Loop (HTTP server only, optional)
+
+The HTTP server gains a **single `setInterval` loop** that runs periodic maintenance. This is the only new long-running behavior in the system.
+
+```typescript
+// In src/server.ts, after app.listen():
+
+const TICK_INTERVAL = parseInt(process.env.OPENCONTEXT_TICK_INTERVAL ?? '300000', 10) // 5 minutes default
+const ENABLE_BACKGROUND = process.env.OPENCONTEXT_BACKGROUND !== 'false' // opt-out
+
+if (ENABLE_BACKGROUND) {
+  setInterval(async () => {
+    try {
+      await backgroundTick(store, schema, observer, analyzer)
+    } catch (error) {
+      // Log and continue — background failures are non-fatal
+      console.error('[opencontext] background tick failed:', error)
+    }
+  }, TICK_INTERVAL)
+}
+```
+
+**What `backgroundTick` does** (sequentially, bounded work per tick):
+
+```typescript
+async function backgroundTick(store, schema, observer, analyzer) {
+  // 1. Rotate observation log if needed (~0ms if under cap)
+  observer.rotateIfNeeded()
+
+  // 2. Refresh deterministic self-model cache (~50ms)
+  const selfModel = await buildSelfModel(store, schema, observer)
+  cache.set('self-model', selfModel, TTL_1_HOUR)
+
+  // 3. If Ollama available AND deep cache expired, run deep analysis (~5-10s)
+  if (analyzer && cache.isExpired('deep-analysis')) {
+    const deep = await buildSelfModel(store, schema, observer, analyzer)
+    cache.set('deep-analysis', deep, TTL_1_HOUR)
+  }
+
+  // 4. Detect new contradictions if store changed since last check
+  if (analyzer && store.hasChangedSince(cache.get('last-contradiction-check'))) {
+    const contradictions = await analyzer.detectContradictions(store.listContexts())
+    cache.set('contradictions', contradictions, TTL_1_HOUR)
+  }
+}
+```
+
+**Key constraints on the tick loop**:
+
+| Constraint | Value | Rationale |
+|---|---|---|
+| Tick interval | 5 minutes (configurable) | Frequent enough to keep cache warm, infrequent enough to not load the system |
+| Max Ollama calls per tick | 2 | Bounded: one for deep self-model, one for contradiction detection |
+| Max entries per Ollama call | 50 | Sample recent entries, not full store |
+| Total tick duration cap | 30 seconds | If tick exceeds this, skip remaining Ollama work |
+| Failure behavior | Log and continue | Background failures never crash the server |
+| Disable flag | `OPENCONTEXT_BACKGROUND=false` | Users can opt out entirely |
+
+### 8.4 How the Three Layers Interact
+
+```
+Agent calls introspect()
+  → Check Layer 3 cache (warm from background tick?)
+  → Cache hit: return instantly (<1ms)
+  → Cache miss: compute Layer 1 (on-demand, <100ms)
+  → Return result
+
+Agent calls introspect(deep=true)
+  → Check Layer 3 cache (deep analysis from background tick?)
+  → Cache hit: return instantly
+  → Cache miss: run Ollama now (Layer 1, 2-10s)
+  → Return result
+
+Store mutation (save_typed_context, etc.)
+  → Layer 2: log observation, maybe refresh self-model cache
+  → Layer 3: next tick will pick up new data automatically
+
+No agents connected, server idle
+  → Layer 3 tick still runs every 5 minutes
+  → Keeps caches warm so the NEXT agent gets instant results
+  → If Ollama is available, deep analysis stays fresh
+```
+
+### 8.5 MCP Server vs HTTP Server Responsibilities
+
+| Behavior | MCP Server | HTTP Server |
+|---|---|---|
+| On-demand computation (Layer 1) | Yes | Yes (via REST API) |
+| Write-triggered refresh (Layer 2) | Yes | Yes |
+| Background tick loop (Layer 3) | **No** | **Yes** |
+| Ollama analysis | On explicit request only | Background + on request |
+| Cache reads | Reads from `awareness.json` | Reads from in-memory + `awareness.json` |
+| Cache writes | Writes to `awareness.json` | Writes to in-memory + `awareness.json` |
+
+The MCP server stays simple and stateless. The HTTP server gains one `setInterval`. Both benefit from cached results in `awareness.json` — the HTTP server writes them, the MCP server reads them.
+
+**File-based cache sharing**: when the background tick on the HTTP server refreshes the self-model, it writes the result to `awareness.json`. When the MCP server (a separate process) calls `introspect`, it reads from `awareness.json` and finds a warm cache — even though the MCP server never ran any background work itself. This is the same file-sharing pattern already used for `contexts.json`.
+
+### 8.6 Docker Implications
+
+No changes to the Docker model:
+
+```dockerfile
+# HTTP server (default CMD) — gets background tick
+CMD ["node", "dist/server.js"]
+
+# MCP server (override CMD) — no background tick, reads cached results
+# docker run -i ... node dist/mcp/index.js
+```
+
+Single image, single process per container, no supervisor needed. The background tick is just a `setInterval` inside the existing HTTP server process.
+
+If running both services (`docker compose up app mcp`), the HTTP server's background tick keeps `awareness.json` fresh, and the MCP server reads it. Coordination is through the filesystem — same pattern as today with `contexts.json`.
+
+### 8.7 Graceful Shutdown
+
+The HTTP server needs to clean up the tick interval on shutdown:
+
+```typescript
+let tickInterval: NodeJS.Timeout | null = null
+
+// On startup:
+tickInterval = setInterval(backgroundTick, TICK_INTERVAL)
+
+// On shutdown:
+process.on('SIGTERM', () => {
+  if (tickInterval) clearInterval(tickInterval)
+  // Allow in-flight Ollama calls to complete (up to 5s timeout)
+  server.close()
+})
+```
+
+### 8.8 What This Means for Implementation
+
+**Changes to existing files**:
+
+| File | Change |
+|---|---|
+| `src/server.ts` | Add `setInterval` after `app.listen()`, add `SIGTERM` handler. ~30 lines. |
+
+**New code**:
+
+| Location | What |
+|---|---|
+| `src/mcp/awareness.ts` | Add `refreshCache()` function and file-based caching logic. ~40 lines. |
+| `src/mcp/observer.ts` | Add `rotateIfNeeded()` method. ~10 lines. |
+
+**No new files**. No new processes. No new npm dependencies.
+
+### 8.9 Configuration Summary
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `OPENCONTEXT_BACKGROUND` | `true` | Enable/disable background tick on HTTP server |
+| `OPENCONTEXT_TICK_INTERVAL` | `300000` (5 min) | Milliseconds between background ticks |
+| `OPENCONTEXT_TICK_TIMEOUT` | `30000` (30s) | Max duration per tick before skipping remaining work |
+| `OPENCONTEXT_CACHE_TTL` | `3600000` (1 hr) | How long Ollama analysis results stay cached |
+
+All optional. Zero config needed for the default behavior.
+
+---
+
+## 9. Putting It Together: Agent Interaction Flow
 
 ### Session Start (Agent calls introspect)
 
@@ -887,7 +1123,7 @@ Agent / UI                     OpenContext                    Ollama
 
 ---
 
-## 9. Storage Schema Evolution
+## 10. Storage Schema Evolution
 
 ### Current: `~/.opencontext/contexts.json`
 
@@ -962,7 +1198,7 @@ User-created. See section 4.1 for format.
 
 ---
 
-## 10. Implementation Plan
+## 11. Implementation Plan
 
 ### Phase 1: User-Defined Schemas (Foundation)
 
@@ -1022,6 +1258,19 @@ User-created. See section 4.1 for format.
 
 **Tests**: Each analysis method tested in both modes (Ollama available vs unavailable). Mock Ollama responses for deterministic test behavior. Verify fallback produces valid output for all methods.
 
+### Phase 5: Background Tick Loop (Continuous Analysis)
+
+**Goal**: HTTP server proactively keeps caches warm, runs periodic Ollama analysis, and rotates observation logs — so agents get near-instant results.
+
+| Step | File | Change | Effort |
+|------|------|--------|--------|
+| 5a | `src/mcp/awareness.ts` | Add `refreshCache()` function and file-based caching with TTL | S |
+| 5b | `src/mcp/observer.ts` | Add `rotateIfNeeded()` method | XS |
+| 5c | `src/server.ts` | Add `setInterval` tick loop after `app.listen()`, wire `backgroundTick()` function | S |
+| 5d | `src/server.ts` | Add `SIGTERM`/`SIGINT` graceful shutdown handler (clear interval, drain in-flight calls) | XS |
+
+**Tests**: Background tick with mocked store (verify cache refresh, rotation). Verify MCP server reads warm cache from `awareness.json` written by HTTP server tick. Verify graceful shutdown clears interval.
+
 ### Phase Summary
 
 | Phase | New Files | Modified Files | Estimated New Lines | Dependencies |
@@ -1030,11 +1279,12 @@ User-created. See section 4.1 for format.
 | 2 | 2 (`awareness.ts`, `AwarenessPanel.tsx`) | 2 (`server.ts` MCP, `server.ts` REST, `App.tsx`) | ~350 | Phase 1 (schema needed for coverage analysis) |
 | 3 | 1 (`observer.ts`) | 3 (`store.ts`, `server.ts`, `awareness.ts`) | ~200 | Phase 2 (awareness consumes observer data) |
 | 4 | 1 (`analyzer.ts`) | 4 (`server.ts` MCP, `server.ts` REST, `awareness.ts`, `AwarenessPanel.tsx`) | ~350 | Phases 1-3 + existing `ollama` npm package (already a dependency) |
-| **Total** | **6 new files** | **~6 existing files modified** | **~1300 lines** | **0 new npm dependencies** (reuses existing `ollama` package) |
+| 5 | 0 | 3 (`server.ts`, `awareness.ts`, `observer.ts`) | ~100 | Phases 1-4 (wires existing components into a background loop) |
+| **Total** | **6 new files** | **~6 existing files modified** | **~1400 lines** | **0 new npm dependencies** (reuses existing `ollama` package) |
 
 ---
 
-## 11. New MCP Tool Summary
+## 12. New MCP Tool Summary
 
 After implementation, the MCP server exposes **19 tools** (11 existing + 8 new):
 
@@ -1074,7 +1324,7 @@ After implementation, the MCP server exposes **19 tools** (11 existing + 8 new):
 
 ---
 
-## 12. New REST API Summary
+## 13. New REST API Summary
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -1085,7 +1335,7 @@ After implementation, the MCP server exposes **19 tools** (11 existing + 8 new):
 
 ---
 
-## 13. New UI Routes Summary
+## 14. New UI Routes Summary
 
 | Path | Component | Description |
 |------|-----------|-------------|
@@ -1094,7 +1344,7 @@ After implementation, the MCP server exposes **19 tools** (11 existing + 8 new):
 
 ---
 
-## 14. What We're NOT Building (Scope Boundaries)
+## 15. What We're NOT Building (Scope Boundaries)
 
 | Out of Scope | Reason |
 |---|---|
@@ -1111,7 +1361,7 @@ After implementation, the MCP server exposes **19 tools** (11 existing + 8 new):
 
 ---
 
-## 15. Success Criteria
+## 16. Success Criteria
 
 ### Functional
 
@@ -1141,7 +1391,7 @@ After implementation, the MCP server exposes **19 tools** (11 existing + 8 new):
 
 ---
 
-## 16. Future Directions (Post-v1)
+## 17. Future Directions (Post-v1)
 
 These are explicitly out of scope for v1 but inform the architecture:
 
