@@ -21,6 +21,7 @@ A **Self-Aware Context Runtime** — an evolution of the existing OpenContext MC
 2. **Maintains a model of itself** — what it knows, what's missing, what's stale, what's contradictory
 3. **Observes how agents use it** — tracking reads, writes, misses, and usefulness
 4. **Improves autonomously** — suggests schema changes, flags gaps, resolves staleness
+5. **Deepens understanding with Ollama** — uses local LLM analysis for semantic contradiction detection, intelligent schema suggestions, context summarization, and smart retrieval — gracefully degrading to deterministic heuristics when Ollama is unavailable
 
 The goal: any agent that connects to OpenContext gets smarter because the context layer itself is smart.
 
@@ -34,6 +35,7 @@ The goal: any agent that connects to OpenContext gets smarter because the contex
 4. **Self-awareness is queryable** — agents access the system's self-knowledge through the same MCP tool interface they already use.
 5. **Additive, not breaking** — existing `save_context`, `recall_context`, etc. keep working unchanged. New capabilities are new tools.
 6. **Local-first** — all self-awareness data stays in the local JSON store. No cloud, no network calls.
+7. **Graceful degradation** — every Ollama-enhanced feature has a deterministic fallback. The system is fully functional without Ollama; LLM analysis makes it smarter, not operational. This follows the exact pattern already used in `OllamaPreferenceAnalyzer` (`try ollama → catch → generateBasic*`).
 
 ---
 
@@ -57,31 +59,39 @@ Claude / Agent  ←→  MCP (stdio)  ←→  server.ts  ←→  store.ts  ←→
                                    │ schema.ts    │  ← user-defined types
                                    │ awareness.ts │  ← self-model + introspection
                                    │ observer.ts  │  ← usage tracking
+                                   │ analyzer.ts  │  ← Ollama-powered deep analysis
                                    └──────────────┘
                                           │
-                                          ▼
-                                   ~/.opencontext/
-                                   ├── contexts.json    (existing — add schema + meta sections)
-                                   ├── schema.yaml      (new — user-defined types)
-                                   └── awareness.json   (new — usage log + self-model)
+                                   ┌──────┴──────┐
+                                   ▼              ▼
+                            ~/.opencontext/    Ollama (optional)
+                            ├── contexts.json  http://localhost:11434
+                            ├── schema.yaml        │
+                            └── awareness.json     │ used by analyzer.ts for:
+                                                   │ - semantic contradiction detection
+                                                   │ - schema suggestions from untyped entries
+                                                   │ - context summarization
+                                                   │ - smart relevance-ranked retrieval
+                                                   │ - stale entry re-evaluation
 ```
 
 ### Files Changed vs Added
 
 | File | Status | What Changes |
 |------|--------|-------------|
-| `src/mcp/types.ts` | **Modified** | Add `SchemaType`, `SelfModel`, `ObservationEvent` interfaces |
+| `src/mcp/types.ts` | **Modified** | Add `SchemaType`, `SelfModel`, `ObservationEvent`, `AnalysisResult` interfaces |
 | `src/mcp/store.ts` | **Modified** | Add schema-aware save/query methods, wrap existing methods with observation hooks |
-| `src/mcp/server.ts` | **Modified** | Register 5 new MCP tools alongside existing 11 |
-| `src/mcp/schema.ts` | **New** | Schema loader, validator, discovery (small, ~150 lines) |
+| `src/mcp/server.ts` | **Modified** | Register 8 new MCP tools alongside existing 11 |
+| `src/mcp/schema.ts` | **New** | Schema loader, validator, discovery (~150 lines) |
 | `src/mcp/awareness.ts` | **New** | Self-model builder, introspection engine, gap detection (~200 lines) |
 | `src/mcp/observer.ts` | **New** | Usage tracking, read/write/miss logging (~100 lines) |
-| `src/server.ts` | **Modified** | Add 3 new REST endpoints for schema + awareness |
+| `src/mcp/analyzer.ts` | **New** | Ollama-powered analysis: contradictions, schema suggestions, summarization, smart retrieval (~250 lines) |
+| `src/server.ts` | **Modified** | Add 4 new REST endpoints for schema + awareness + analysis |
 | `ui/src/components/SchemaEditor.tsx` | **New** | UI for defining/editing context types |
-| `ui/src/components/AwarenessPanel.tsx` | **New** | UI for viewing self-model, gaps, health |
+| `ui/src/components/AwarenessPanel.tsx` | **New** | UI for viewing self-model, gaps, health, analysis results |
 | `ui/src/App.tsx` | **Modified** | Add 2 new routes |
 
-**Estimated total new code**: ~600 lines across 3 new files + ~150 lines of modifications to 4 existing files.
+**Estimated total new code**: ~850 lines across 4 new files + ~200 lines of modifications to 4 existing files.
 
 ---
 
@@ -319,10 +329,10 @@ It reads from the store and schema to compute:
 2. **Coverage** — cross-reference schema types against entries with `contextType` field
 3. **Freshness** — compare `updatedAt` timestamps against current date
 4. **Gaps** — schema types with zero entries, high-demand types from observer (see Feature 3)
-5. **Contradictions** — simple heuristic: entries of the same type with semantically opposing content (keyword-based, not LLM-powered — e.g. one entry says "prefer X" another says "avoid X")
+5. **Contradictions** — keyword heuristic as baseline (entries of the same type with opposing terms like "prefer X" vs "avoid X"). When `deep=true` and Ollama is available, upgraded to semantic contradiction detection (see Feature 4, section 7.6)
 6. **Health** — computed scores from coverage and freshness metrics
 
-**No LLM required.** All computation is deterministic, fast, and local. An LLM-powered deep analysis mode can be added later as an optional enhancement using Ollama.
+**Default mode requires no LLM.** The baseline self-model is deterministic, fast (<100ms), and always available. The `deep=true` mode enriches it with Ollama-powered analysis when available (see section 7.7).
 
 ### 5.3 New MCP Tool: `introspect`
 
@@ -494,50 +504,342 @@ This closes the feedback loop. Agents report back whether the context they retri
 
 ---
 
-## 7. Putting It Together: Agent Interaction Flow
+## 7. Feature 4: Ollama-Powered Deep Analysis
+
+OpenContext already uses Ollama for preference and memory analysis during chat import (see `src/analyzers/ollama-preferences.ts`). This feature extends that same pattern — the `Ollama` SDK, the `try/catch → fallback` degradation, the model/host configuration — into the self-aware runtime.
+
+### 7.1 Design: Always Works Without Ollama
+
+Every Ollama-enhanced capability has a **deterministic baseline** and an **LLM-enhanced mode**:
+
+| Capability | Without Ollama (deterministic) | With Ollama (enhanced) |
+|---|---|---|
+| Contradiction detection | Keyword heuristic: same-type entries with opposing terms ("prefer X" vs "avoid X") | Semantic analysis: understands that "use composition" and "chose class inheritance" are in tension |
+| Schema suggestions | Pattern matching: detect repeated field patterns in untyped `note` entries | Semantic clustering: group untyped entries by meaning, propose named types with descriptions |
+| Context summarization | Truncation: first N characters of each entry | Intelligent digest: multi-entry synthesis into a concise briefing |
+| Smart retrieval | Substring/AND search (existing `recallContext`/`searchContexts`) | Relevance-ranked: re-rank results by semantic similarity to the query |
+| Stale entry evaluation | Timestamp-based: >90 days = stale | Semantic check: "is this entry still relevant given recent entries?" |
+| Gap descriptions | Template-based: "Type X has 0 entries" | Natural language: "You track decisions and preferences but have no context about deployment. Recent agent sessions touched deployment 3 times." |
+
+### 7.2 Implementation: `src/mcp/analyzer.ts` (new file)
+
+Reuses the existing Ollama integration patterns from `src/analyzers/ollama-preferences.ts`:
+
+```typescript
+import { Ollama } from 'ollama';
+
+export class ContextAnalyzer {
+  private ollama: Ollama;
+  private model: string;
+  private available: boolean | null = null;  // lazy-checked
+
+  constructor(
+    model: string = process.env.OLLAMA_MODEL ?? 'gpt-oss:20b',
+    host: string = process.env.OLLAMA_HOST ?? 'http://localhost:11434'
+  ) {
+    this.ollama = new Ollama({ host });
+    this.model = model;
+  }
+
+  // Check Ollama availability once, cache result
+  private async isAvailable(): Promise<boolean> {
+    if (this.available !== null) return this.available;
+    try {
+      const { models } = await this.ollama.list();
+      this.available = models.some(m => m.name === this.model);
+    } catch {
+      this.available = false;
+    }
+    return this.available;
+  }
+
+  // --- Core analysis methods (each with deterministic fallback) ---
+
+  async detectContradictions(entries: ContextEntry[]): Promise<Contradiction[]>
+  async suggestSchemaTypes(untypedEntries: ContextEntry[]): Promise<SuggestedType[]>
+  async summarizeContext(entries: ContextEntry[], focus?: string): Promise<string>
+  async rankByRelevance(entries: ContextEntry[], query: string): Promise<RankedEntry[]>
+  async evaluateStaleness(entries: ContextEntry[], recentEntries: ContextEntry[]): Promise<StalenessResult[]>
+  async describeGaps(gaps: Gap[], observerSummary: ObservationSummary): Promise<EnrichedGap[]>
+}
+```
+
+**Key pattern**: every method calls `isAvailable()` first. If Ollama is down, it immediately falls back to the deterministic implementation — no timeout waiting, no retry. Matches existing behavior in `OllamaPreferenceAnalyzer`.
+
+### 7.3 Ollama Prompt Design
+
+Each analysis task uses a focused, structured prompt. Prompts are kept small to work with modest local models.
+
+#### Contradiction Detection Prompt
+
+```
+You are analyzing a user's saved context entries for contradictions.
+
+Entries (same type: "preference"):
+1. [id: pref-12] "Prefer composition over inheritance in all code"
+2. [id: pref-47] "Use class-based repository pattern with inheritance for data layer"
+
+Are these contradictory? If yes, explain the tension in one sentence.
+Respond as JSON: { "contradictory": bool, "explanation": string }
+```
+
+**Why this works with small models**: binary yes/no question, structured JSON output, minimal context window needed. Each call analyzes a small batch of entries (pairwise comparison within a type), not the entire store.
+
+#### Schema Suggestion Prompt
+
+```
+You are analyzing untyped context entries to suggest schema types.
+
+Entries without a type:
+1. "Use Redis for caching because Memcached doesn't support data structures"
+2. "Chose PostgreSQL over MySQL for JSON column support"
+3. "Switched from REST to GraphQL for the mobile API"
+
+These entries seem to follow a pattern. Suggest a schema type name and fields.
+Respond as JSON: { "typeName": string, "description": string, "fields": [{ "name": string, "type": "string"|"string[]"|"number", "description": string }] }
+```
+
+#### Context Summarization Prompt
+
+```
+You are summarizing saved context for an AI agent that is about to start working.
+
+Context entries (type: "decision", project: "my-app"):
+1. "Use Drizzle ORM — better SQL control than Prisma"
+2. "JWT auth with refresh tokens — stateless for microservices"
+3. "Redis pub/sub for real-time features — simpler than WebSockets"
+
+Write a 2-3 sentence briefing an agent can use to understand this project's architecture.
+Do not use bullet points. Write in present tense.
+```
+
+#### Relevance Ranking Prompt
+
+```
+You are ranking context entries by relevance to a query.
+
+Query: "how should I handle authentication?"
+
+Entries:
+1. [id: dec-23] "JWT auth with refresh tokens for the API"
+2. [id: dec-12] "Use Drizzle ORM for database access"
+3. [id: pref-5] "Always prefer stateless approaches"
+4. [id: dec-45] "Redis for session caching"
+
+Rank these by relevance (most relevant first).
+Respond as JSON: { "ranked": ["dec-23", "pref-5", "dec-45", "dec-12"] }
+```
+
+### 7.4 Deterministic Fallbacks (no Ollama)
+
+Each analysis method has an inline fallback:
+
+**Contradiction detection fallback**:
+```typescript
+// Keyword-based opposition detection
+const opposites = [
+  ['prefer', 'avoid'], ['use', 'don\'t use'], ['always', 'never'],
+  ['composition', 'inheritance'], ['class', 'functional'],
+  ['stateful', 'stateless'], ['monolith', 'microservice']
+];
+// Compare entries of the same type — if entry A contains word X
+// and entry B contains its opposite Y, flag as potential contradiction
+```
+
+**Schema suggestion fallback**:
+```typescript
+// Pattern matching on untyped entries
+// 1. Group entries by tag overlap
+// 2. For each group with 3+ entries, extract common word patterns
+// 3. Suggest a type name from the most frequent tag
+// 4. Suggest fields from recurring structural patterns
+//    (e.g., entries that contain "because" → suggest "reasoning" field)
+```
+
+**Summarization fallback**:
+```typescript
+// Concatenate first 100 chars of each entry, grouped by type
+// Return: "N decisions, M preferences, K bug patterns. Most recent: [title]"
+```
+
+**Relevance ranking fallback**:
+```typescript
+// Score by term overlap between query and entry content
+// Boost entries whose contextType matches query keywords
+// Return sorted by score
+```
+
+### 7.5 New MCP Tools (Ollama-enhanced)
+
+| Tool | Arguments | With Ollama | Without Ollama |
+|------|-----------|-------------|----------------|
+| `analyze_contradictions` | `type?` | Semantic pairwise comparison via LLM | Keyword-opposition heuristic |
+| `suggest_schema` | (none) | LLM clusters untyped entries and proposes types | Tag-grouping + pattern matching |
+| `summarize_context` | `type?`, `bubbleId?`, `focus?` | LLM-generated briefing paragraph | Truncated concatenation |
+
+These three tools are **in addition to** the 5 tools from Features 1-3, bringing the total new tools to 8.
+
+### 7.6 Integration with Self-Model (`awareness.ts`)
+
+The `buildSelfModel()` function gains an optional `analyzer` parameter:
+
+```typescript
+export async function buildSelfModel(
+  store: ReturnType<typeof createStore>,
+  schema: Schema | null,
+  observer?: ReturnType<typeof createObserver>,
+  analyzer?: ContextAnalyzer               // NEW — optional
+): Promise<SelfModel>
+```
+
+When `analyzer` is provided, the self-model is **enriched**:
+
+- **`gaps`** array gets natural-language descriptions instead of template strings
+- **`contradictions`** array is populated by semantic analysis instead of (or in addition to) keyword heuristics
+- **`health.details`** field gets a human-readable paragraph summarizing the overall state
+
+When `analyzer` is absent or Ollama is down, the self-model is computed deterministically as described in section 5.2. The structure is identical — only the quality of descriptions changes.
+
+### 7.7 Integration with `introspect` Tool
+
+The `introspect` MCP tool gains an optional `deep` argument:
+
+```
+Tool: introspect
+Arguments:
+  deep?: boolean (default: false)
+
+deep=false (default): Deterministic self-model. Fast (<100ms). Always works.
+deep=true: Ollama-enhanced self-model. Richer descriptions, semantic
+           contradictions, natural-language gap analysis. Slower (2-10s).
+           Falls back to deep=false if Ollama unavailable.
+```
+
+This lets agents choose: quick introspection at session start (`deep=false`), or thorough analysis when specifically investigating context health (`deep=true`).
+
+### 7.8 Integration with Smart Retrieval
+
+Existing search tools (`recall_context`, `search_contexts`) are **unchanged**. Smart retrieval is exposed as a new behavior on `query_by_type`:
+
+```
+Tool: query_by_type
+Arguments:
+  type: string
+  filter?: Record<string, unknown>
+  ranked?: boolean (default: false)     // NEW
+
+ranked=false: Returns entries filtered by type/fields (deterministic, fast)
+ranked=true: Passes results through Ollama relevance ranking.
+             Falls back to ranked=false if Ollama unavailable.
+```
+
+This avoids modifying existing tools while making LLM-ranked retrieval opt-in.
+
+### 7.9 New REST Endpoint
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/analyze` | `POST` | Run a specific analysis: `{ action: "contradictions" | "suggest_schema" | "summarize", params: {...} }`. Returns results with `source: "ollama" | "deterministic"` so the UI can indicate which mode was used. |
+
+### 7.10 UI Integration
+
+The `AwarenessPanel.tsx` component (from Feature 2) gains:
+
+- **"Deep Analysis" button** — triggers Ollama-powered introspection, shows richer results when available
+- **Ollama status indicator** — green dot when Ollama is reachable and model is loaded, gray when unavailable
+- **Analysis source badge** — each insight shows whether it came from deterministic heuristics or LLM analysis
+- **Schema suggestion cards** — when `suggest_schema` finds patterns in untyped entries, display proposed types with a one-click "Add to schema" action
+- **Contradiction resolution UI** — show conflicting entries side-by-side with the LLM's explanation, let user resolve by editing or deleting
+
+### 7.11 Configuration
+
+Follows the exact same pattern as existing Ollama configuration:
+
+| Setting | Source | Default |
+|---------|--------|---------|
+| Model | `OLLAMA_MODEL` env var, or `req.body.model`, or UI settings | `gpt-oss:20b` |
+| Host | `OLLAMA_HOST` env var, or `req.body.ollamaHost`, or UI settings | `http://localhost:11434` (local), `http://host.docker.internal:11434` (Docker) |
+| Enable/disable | `OPENCONTEXT_OLLAMA_ENABLED` env var, or UI toggle | `true` (but gracefully no-ops if unavailable) |
+
+No new configuration surfaces — reuses the existing environment variables and patterns.
+
+### 7.12 Cost and Performance
+
+- **No external API costs** — Ollama runs locally, all inference is free
+- **Prompt sizes are small** — each analysis call sends 5-20 entries, not the whole store. Typical prompt is <2000 tokens
+- **Pairwise contradiction checks are bounded** — within a type, compare at most `C(n, 2)` pairs. For types with >50 entries, sample the most recent 50
+- **Caching** — analysis results for contradiction detection and schema suggestions are cached in `awareness.json` with a TTL (default: 1 hour). Repeated calls within the TTL return cached results
+- **Non-blocking** — all Ollama calls are async. The MCP tool returns the deterministic result immediately and can optionally include a `pendingAnalysis: true` flag if the LLM result is still computing (future enhancement)
+
+---
+
+## 8. Putting It Together: Agent Interaction Flow
 
 ### Session Start (Agent calls introspect)
 
 ```
-Agent                          OpenContext
-  │                                │
-  │  describe_schema()             │
-  │  ─────────────────────────►    │
-  │                                │  Load schema.yaml
-  │  ◄─────────────────────────    │  Return: 3 types defined (decision, preference, bug_pattern)
-  │                                │
-  │  introspect()                  │
-  │  ─────────────────────────►    │
-  │                                │  buildSelfModel() from store + schema + observer
-  │  ◄─────────────────────────    │  Return: health=good, 2 gaps, 1 contradiction
-  │                                │
-  │  (Agent now knows what          │
-  │   context exists, what to       │
-  │   trust, and where gaps are)    │
+Agent                          OpenContext                    Ollama
+  │                                │                            │
+  │  describe_schema()             │                            │
+  │  ─────────────────────────►    │                            │
+  │                                │  Load schema.yaml          │
+  │  ◄─────────────────────────    │  Return: 3 types           │
+  │                                │                            │
+  │  introspect()                  │                            │
+  │  ─────────────────────────►    │                            │
+  │                                │  buildSelfModel()          │
+  │                                │  (deterministic: instant)  │
+  │  ◄─────────────────────────    │  Return: health, 2 gaps,   │
+  │                                │  1 keyword contradiction   │
+  │                                │                            │
+  │  introspect(deep=true)         │                            │
+  │  ─────────────────────────►    │                            │
+  │                                │  buildSelfModel() ────────►│
+  │                                │                            │ semantic analysis
+  │                                │                  ◄─────────│ richer descriptions
+  │  ◄─────────────────────────    │  Return: enriched model,   │
+  │                                │  semantic contradictions,  │
+  │                                │  natural-language gaps     │
+  │                                │                            │
+  │  (If Ollama unavailable,       │                            │
+  │   deep=true silently falls     │                            │
+  │   back to deterministic)       │                            │
 ```
 
-### During Session (Agent reads and writes)
+### During Session (Agent reads, writes, and uses smart retrieval)
 
 ```
-Agent                          OpenContext
-  │                                │
-  │  query_by_type("decision",     │
-  │    { project: "my-app" })      │
-  │  ─────────────────────────►    │
-  │                                │  Query store, log read event
-  │  ◄─────────────────────────    │  Return: 5 decisions for my-app
-  │                                │
-  │  (Agent uses decisions to       │
-  │   inform its work)              │
-  │                                │
-  │  save_typed_context("decision", │
-  │    { what: "Use Redis",         │
-  │      why: "Need pub/sub...",    │
-  │      alternatives: ["RabbitMQ"] │
-  │    })                           │
-  │  ─────────────────────────►    │
-  │                                │  Validate against schema, save, log write event
-  │  ◄─────────────────────────    │  Return: saved with ID dec-48
+Agent                          OpenContext                    Ollama
+  │                                │                            │
+  │  query_by_type("decision",     │                            │
+  │    { project: "my-app" },      │                            │
+  │    ranked: true)               │                            │
+  │  ─────────────────────────►    │                            │
+  │                                │  Filter by type ──────────►│
+  │                                │                            │ rank by relevance
+  │                                │                  ◄─────────│
+  │  ◄─────────────────────────    │  Return: 5 decisions       │
+  │                                │  (most relevant first)     │
+  │                                │                            │
+  │  save_typed_context("decision",│                            │
+  │    { what: "Use Redis",        │                            │
+  │      why: "Need pub/sub...",   │                            │
+  │      alternatives: ["RabbitMQ"]│                            │
+  │    })                          │                            │
+  │  ─────────────────────────►    │                            │
+  │                                │  Validate, save, log       │
+  │  ◄─────────────────────────    │  Return: saved dec-48      │
+  │                                │                            │
+  │  summarize_context(            │                            │
+  │    type: "decision",           │                            │
+  │    focus: "infrastructure")    │                            │
+  │  ─────────────────────────►    │                            │
+  │                                │  Gather entries ──────────►│
+  │                                │                            │ synthesize briefing
+  │                                │                  ◄─────────│
+  │  ◄─────────────────────────    │  "This project uses        │
+  │                                │   Drizzle ORM, JWT auth,   │
+  │                                │   and Redis pub/sub..."    │
 ```
 
 ### Session End (Agent reports back)
@@ -557,9 +859,35 @@ Agent                          OpenContext
   │  ◄─────────────────────────    │  Return: acknowledged
 ```
 
+### Periodic Maintenance (User or agent triggers analysis)
+
+```
+Agent / UI                     OpenContext                    Ollama
+  │                                │                            │
+  │  analyze_contradictions()      │                            │
+  │  ─────────────────────────►    │                            │
+  │                                │  Group entries by type     │
+  │                                │  Pairwise compare ────────►│
+  │                                │                            │ semantic check
+  │                                │                  ◄─────────│
+  │  ◄─────────────────────────    │  Return: 2 contradictions  │
+  │                                │  with explanations         │
+  │                                │                            │
+  │  suggest_schema()              │                            │
+  │  ─────────────────────────►    │                            │
+  │                                │  Gather untyped entries    │
+  │                                │  Cluster by meaning ──────►│
+  │                                │                            │ propose types
+  │                                │                  ◄─────────│
+  │  ◄─────────────────────────    │  Return: suggested type    │
+  │                                │  "api_decision" with       │
+  │                                │  fields: endpoint, method, │
+  │                                │  reasoning                 │
+```
+
 ---
 
-## 8. Storage Schema Evolution
+## 9. Storage Schema Evolution
 
 ### Current: `~/.opencontext/contexts.json`
 
@@ -634,7 +962,7 @@ User-created. See section 4.1 for format.
 
 ---
 
-## 9. Implementation Plan
+## 10. Implementation Plan
 
 ### Phase 1: User-Defined Schemas (Foundation)
 
@@ -679,6 +1007,21 @@ User-created. See section 4.1 for format.
 
 **Tests**: Event logging, log rotation, missed query detection, usefulness tracking.
 
+### Phase 4: Ollama-Powered Deep Analysis
+
+**Goal**: Semantic contradiction detection, intelligent schema suggestions, context summarization, and relevance-ranked retrieval — all with graceful degradation.
+
+| Step | File | Change | Effort |
+|------|------|--------|--------|
+| 4a | `src/mcp/analyzer.ts` | New file: `ContextAnalyzer` class with 6 analysis methods + deterministic fallbacks | M |
+| 4b | `src/mcp/server.ts` | Register `analyze_contradictions`, `suggest_schema`, `summarize_context` tools | S |
+| 4c | `src/mcp/server.ts` | Add `deep` arg to `introspect`, `ranked` arg to `query_by_type` | XS |
+| 4d | `src/mcp/awareness.ts` | Wire optional `ContextAnalyzer` into `buildSelfModel()` for enriched gaps/contradictions | S |
+| 4e | `src/server.ts` | Add `POST /api/analyze` endpoint | XS |
+| 4f | `ui/src/components/AwarenessPanel.tsx` | Add deep analysis button, Ollama status indicator, schema suggestion cards, contradiction resolution UI | M |
+
+**Tests**: Each analysis method tested in both modes (Ollama available vs unavailable). Mock Ollama responses for deterministic test behavior. Verify fallback produces valid output for all methods.
+
 ### Phase Summary
 
 | Phase | New Files | Modified Files | Estimated New Lines | Dependencies |
@@ -686,13 +1029,14 @@ User-created. See section 4.1 for format.
 | 1 | 2 (`schema.ts`, `SchemaEditor.tsx`) | 4 (`types.ts`, `store.ts`, `server.ts`, `App.tsx`) + `server.ts` (REST) | ~400 | None (uses existing `js-yaml` or raw YAML parsing) |
 | 2 | 2 (`awareness.ts`, `AwarenessPanel.tsx`) | 2 (`server.ts` MCP, `server.ts` REST, `App.tsx`) | ~350 | Phase 1 (schema needed for coverage analysis) |
 | 3 | 1 (`observer.ts`) | 3 (`store.ts`, `server.ts`, `awareness.ts`) | ~200 | Phase 2 (awareness consumes observer data) |
-| **Total** | **5 new files** | **~6 existing files modified** | **~950 lines** | **0 new npm dependencies** |
+| 4 | 1 (`analyzer.ts`) | 4 (`server.ts` MCP, `server.ts` REST, `awareness.ts`, `AwarenessPanel.tsx`) | ~350 | Phases 1-3 + existing `ollama` npm package (already a dependency) |
+| **Total** | **6 new files** | **~6 existing files modified** | **~1300 lines** | **0 new npm dependencies** (reuses existing `ollama` package) |
 
 ---
 
-## 10. New MCP Tool Summary
+## 11. New MCP Tool Summary
 
-After implementation, the MCP server exposes **16 tools** (11 existing + 5 new):
+After implementation, the MCP server exposes **19 tools** (11 existing + 8 new):
 
 ### Existing (unchanged)
 
@@ -710,29 +1054,38 @@ After implementation, the MCP server exposes **16 tools** (11 existing + 5 new):
 | `update_bubble` | Bubble CRUD |
 | `delete_bubble` | Bubble CRUD |
 
-### New
+### New (Phases 1-3: Schema, Awareness, Observation)
 
 | Tool | Category | Description |
 |------|----------|-------------|
 | `describe_schema` | Schema | Returns user-defined context types and fields. Agents call this to understand what context the user cares about. |
 | `save_typed_context` | Schema | Save a structured entry matching a user-defined type. |
-| `query_by_type` | Schema | Query entries by type with optional field-level filtering. |
-| `introspect` | Awareness | Full self-model: health, coverage, freshness, gaps, contradictions. |
+| `query_by_type` | Schema | Query entries by type with optional field-level filtering. Supports `ranked: true` for Ollama relevance sorting. |
+| `introspect` | Awareness | Full self-model: health, coverage, freshness, gaps, contradictions. Supports `deep: true` for Ollama-enhanced analysis. |
 | `report_usefulness` | Observation | Agent reports whether retrieved context was helpful. |
+
+### New (Phase 4: Ollama-Powered Analysis)
+
+| Tool | Category | With Ollama | Without Ollama |
+|------|----------|-------------|----------------|
+| `analyze_contradictions` | Analysis | Semantic pairwise contradiction detection with natural-language explanations | Keyword-opposition heuristic with template explanations |
+| `suggest_schema` | Analysis | LLM-powered clustering of untyped entries into proposed schema types with descriptions | Tag-grouping + structural pattern matching |
+| `summarize_context` | Analysis | LLM-generated briefing paragraph synthesized from multiple entries | Truncated concatenation with entry counts |
 
 ---
 
-## 11. New REST API Summary
+## 12. New REST API Summary
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/schema` | `GET` | Returns current schema types |
 | `/api/schema` | `PUT` | Updates schema definition |
 | `/api/awareness` | `GET` | Returns computed self-model |
+| `/api/analyze` | `POST` | Run Ollama analysis: contradictions, schema suggestions, or summarization. Returns `source: "ollama" \| "deterministic"` to indicate which mode was used. |
 
 ---
 
-## 12. New UI Routes Summary
+## 13. New UI Routes Summary
 
 | Path | Component | Description |
 |------|-----------|-------------|
@@ -741,11 +1094,11 @@ After implementation, the MCP server exposes **16 tools** (11 existing + 5 new):
 
 ---
 
-## 13. What We're NOT Building (Scope Boundaries)
+## 14. What We're NOT Building (Scope Boundaries)
 
 | Out of Scope | Reason |
 |---|---|
-| LLM-powered contradiction detection | Keep v1 deterministic. Keyword heuristics first. Ollama-powered analysis is a future enhancement. |
+| Cloud LLM APIs (OpenAI, Anthropic) for analysis | Ollama only. Local-first, no API keys, no costs, no data leaving the machine. |
 | Auto-generated CLAUDE.md / .cursorrules | Strong feature, but separate PRD. This PRD focuses on the runtime, not the output. |
 | Cross-device sync | Requires cloud infrastructure. Keep local-first for v1. |
 | SDK npm package (`@opencontext/sdk`) | Separate distribution concern. MCP + REST API is sufficient for v1. |
@@ -753,10 +1106,12 @@ After implementation, the MCP server exposes **16 tools** (11 existing + 5 new):
 | Team/shared schemas | Multi-user adds auth complexity. Single-user first. |
 | Schema marketplace / templates | Community feature. Ship the runtime, templates come later. |
 | Autonomous self-improvement actions | v1 surfaces gaps and suggestions. It doesn't auto-act on them. The agent (or user) decides. |
+| Streaming Ollama responses | All Ollama calls use `stream: false` for simplicity. Streaming can be added later for long summarizations. |
+| Fine-tuning or training on user data | Ollama uses off-the-shelf models. No custom model training. |
 
 ---
 
-## 14. Success Criteria
+## 15. Success Criteria
 
 ### Functional
 
@@ -766,25 +1121,38 @@ After implementation, the MCP server exposes **16 tools** (11 existing + 5 new):
 - [ ] Existing 11 MCP tools continue to work unchanged (backward compatibility)
 - [ ] Store migration from v1 → v2 is automatic and lossless
 - [ ] UI allows editing schemas and viewing system awareness
+- [ ] `analyze_contradictions` detects semantic tensions between entries when Ollama is available
+- [ ] `suggest_schema` proposes meaningful types from untyped entry patterns
+- [ ] `summarize_context` produces coherent briefing paragraphs from multiple entries
+- [ ] All 3 Ollama-powered tools produce valid, useful output via deterministic fallback when Ollama is unavailable
+- [ ] `introspect(deep=true)` enriches gaps and contradictions with natural-language descriptions via Ollama
+- [ ] `query_by_type(ranked=true)` returns entries sorted by semantic relevance via Ollama
 
 ### Non-Functional
 
-- [ ] `introspect` computes in <100ms for stores with up to 1000 entries
+- [ ] `introspect` (default, deterministic) computes in <100ms for stores with up to 1000 entries
+- [ ] `introspect(deep=true)` completes in <10s with Ollama (local model)
 - [ ] Observer adds <1ms overhead to existing store operations
 - [ ] `awareness.json` stays under 200KB with log rotation
-- [ ] Zero new npm dependencies required
+- [ ] Zero new npm dependencies required (reuses existing `ollama` package)
+- [ ] Each Ollama prompt uses <2000 tokens input to work with modest local models
+- [ ] Analysis results are cached in `awareness.json` with 1-hour TTL to avoid redundant Ollama calls
+- [ ] Ollama availability check is lazy (first call only) and cached for the session lifetime
 
 ---
 
-## 15. Future Directions (Post-v1)
+## 16. Future Directions (Post-v1)
 
 These are explicitly out of scope for v1 but inform the architecture:
 
-1. **Ollama-powered deep analysis** — use local LLM to detect semantic contradictions, generate richer gap descriptions, and auto-suggest schema improvements
-2. **Auto-generated instruction files** — produce CLAUDE.md / .cursorrules from the context store + schema, kept in sync automatically
-3. **`@opencontext/sdk`** — npm package for agent builders to integrate without MCP, with TypeScript types generated from the user's schema
-4. **Schema templates and community packs** — curated starter schemas for common workflows
-5. **Session lifecycle** — formal `start_session` / `end_session` tools that let agents declare what they're doing and enable richer handoff between sessions
-6. **Relevance-ranked retrieval** — use usefulness scores and read frequency to rank context entries, returning the most valuable ones first
-7. **Cross-agent session handoff** — agent A ends a session, agent B starts one and gets a briefing of what A did
-8. **Self-improvement actions** — the system not only identifies gaps but proposes concrete prompts to agents: "Next time the user discusses testing, ask them about their E2E preferences and save the answer as a preference entry"
+1. **Auto-generated instruction files** — produce CLAUDE.md / .cursorrules from the context store + schema, kept in sync automatically
+2. **`@opencontext/sdk`** — npm package for agent builders to integrate without MCP, with TypeScript types generated from the user's schema
+3. **Schema templates and community packs** — curated starter schemas for common workflows
+4. **Session lifecycle** — formal `start_session` / `end_session` tools that let agents declare what they're doing and enable richer handoff between sessions
+5. **Hybrid retrieval** — combine Ollama relevance ranking with usefulness scores and read frequency for multi-signal ranking
+6. **Cross-agent session handoff** — agent A ends a session, agent B starts one and gets a briefing of what A did (using `summarize_context` under the hood)
+7. **Self-improvement actions** — the system not only identifies gaps but proposes concrete prompts to agents: "Next time the user discusses testing, ask them about their E2E preferences and save the answer as a preference entry"
+8. **Streaming analysis** — stream Ollama responses for long summarizations to reduce perceived latency
+9. **Pluggable LLM backends** — support Ollama, llama.cpp, LM Studio, or cloud APIs through a unified analyzer interface, letting users choose their preferred local inference engine
+10. **Automatic schema migration** — when `suggest_schema` proposes a new type and the user accepts, automatically reclassify matching untyped entries into the new type using Ollama
+11. **Context embeddings** — generate and cache embeddings for entries using Ollama's embedding models, enabling true vector similarity search alongside keyword search
