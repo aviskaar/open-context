@@ -10,6 +10,12 @@ import { ChatGPTParser } from './parsers/chatgpt.js';
 import { ConversationNormalizer } from './parsers/normalizer.js';
 import { OllamaPreferenceAnalyzer } from './analyzers/ollama-preferences.js';
 import { createStore } from './mcp/store.js';
+import { loadSchema, saveSchema } from './mcp/schema.js';
+import { createObserver } from './mcp/observer.js';
+import { buildSelfModel } from './mcp/awareness.js';
+import { ContextAnalyzer } from './mcp/analyzer.js';
+import { createControlPlane } from './mcp/control-plane.js';
+import { selfImprovementTick } from './mcp/improver.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,7 +35,12 @@ const OLLAMA_HOST = process.env.OLLAMA_HOST ?? 'http://host.docker.internal:1143
 const storePath =
   process.env.OPENCONTEXT_STORE_PATH ??
   path.join(os.homedir(), '.opencontext', 'contexts.json');
-const store = createStore(storePath);
+const observer = createObserver();
+const store = createStore(storePath, observer);
+const analyzer = new ContextAnalyzer(
+  process.env.OLLAMA_MODEL ?? 'gpt-oss:20b',
+  OLLAMA_HOST,
+);
 
 // Preferences files live alongside the context store
 const prefsDir = path.dirname(storePath);
@@ -377,6 +388,142 @@ app.delete('/api/bubbles/:id', (req: Request, res: Response) => {
 });
 
 // ---------------------------------------------------------------------------
+// Schema — user-defined context types
+// ---------------------------------------------------------------------------
+
+app.get('/api/schema', (_req: Request, res: Response) => {
+  const schema = loadSchema();
+  res.json(schema ?? { version: 1, types: [] });
+});
+
+app.put('/api/schema', (req: Request, res: Response) => {
+  try {
+    const schema = req.body as import('./mcp/schema.js').Schema;
+    if (!schema || !Array.isArray(schema.types)) {
+      res.status(400).json({ error: 'Invalid schema: must have types array' });
+      return;
+    }
+    saveSchema(schema);
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ error: 'Failed to save schema' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Awareness — self-model
+// ---------------------------------------------------------------------------
+
+app.get('/api/awareness', (_req: Request, res: Response) => {
+  try {
+    const schema = loadSchema();
+    const model = buildSelfModel(store, schema, observer);
+    res.json(model);
+  } catch {
+    res.status(500).json({ error: 'Failed to build self-model' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Analyze — on-demand Ollama analysis
+// ---------------------------------------------------------------------------
+
+app.post('/api/analyze', async (req: Request, res: Response) => {
+  const { action, params } = req.body as { action: string; params?: Record<string, unknown> };
+  try {
+    if (action === 'contradictions') {
+      const entries = store.listContexts().filter((e) => !e.archived);
+      const result = await analyzer.detectContradictions(entries);
+      res.json({ result, source: 'ollama' });
+    } else if (action === 'suggest_schema') {
+      const untyped = store.listContexts().filter((e) => !e.contextType && !e.archived);
+      const result = await analyzer.suggestSchemaTypes(untyped);
+      res.json({ result, source: 'ollama' });
+    } else if (action === 'summarize') {
+      const entries = store.listContexts().filter((e) => !e.archived);
+      const result = await analyzer.summarizeContext(entries, params?.focus as string);
+      res.json({ result, source: 'ollama' });
+    } else {
+      res.status(400).json({ error: `Unknown action: ${action}` });
+    }
+  } catch {
+    res.status(500).json({ error: 'Analysis failed' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Pending actions — human-in-the-loop governance
+// ---------------------------------------------------------------------------
+
+app.get('/api/pending-actions', (_req: Request, res: Response) => {
+  const controlPlane = createControlPlane(observer);
+  res.json(controlPlane.listPending());
+});
+
+app.post('/api/pending-actions/:id/approve', async (req: Request, res: Response) => {
+  const controlPlane = createControlPlane(observer);
+  const { executed, result, action: approvedAction } = controlPlane.approve(req.params['id'] as string);
+  if (executed && approvedAction) {
+    try {
+      const { executeImprovement } = await import('./mcp/improver.js');
+      const schema = loadSchema();
+      await executeImprovement(approvedAction.action, store, schema, observer);
+      res.json({ ok: true, result });
+    } catch (err) {
+      res.status(500).json({ error: `Approved but execution failed: ${err}` });
+    }
+  } else {
+    res.status(404).json({ error: result });
+  }
+});
+
+app.post('/api/pending-actions/:id/dismiss', (req: Request, res: Response) => {
+  const controlPlane = createControlPlane(observer);
+  const { reason } = req.body as { reason?: string };
+  const dismissed = controlPlane.dismiss(req.params['id'] as string, reason);
+  if (dismissed) {
+    res.json({ ok: true });
+  } else {
+    res.status(404).json({ error: 'Action not found or already resolved' });
+  }
+});
+
+app.post('/api/pending-actions/bulk', async (req: Request, res: Response) => {
+  const controlPlane = createControlPlane(observer);
+  const { action_ids, decision, reason } = req.body as {
+    action_ids: string[];
+    decision: 'approve' | 'dismiss';
+    reason?: string;
+  };
+  if (!Array.isArray(action_ids) || !decision) {
+    res.status(400).json({ error: 'action_ids array and decision required' });
+    return;
+  }
+  if (decision === 'approve') {
+    const schema = loadSchema();
+    const { executeImprovement } = await import('./mcp/improver.js');
+    const results = [];
+    for (const id of action_ids) {
+      const { executed, result, action: approvedAction } = controlPlane.approve(id);
+      if (executed && approvedAction) {
+        try {
+          await executeImprovement(approvedAction.action, store, schema, observer);
+          results.push({ id, ok: true });
+        } catch {
+          results.push({ id, ok: false, error: 'Execution failed' });
+        }
+      } else {
+        results.push({ id, ok: false, error: result });
+      }
+    }
+    res.json({ results });
+  } else {
+    controlPlane.bulkDismiss(action_ids, reason);
+    res.json({ dismissed: action_ids.length });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // SPA fallback — all non-API routes serve the React app
 // ---------------------------------------------------------------------------
 
@@ -396,12 +543,38 @@ export { app };
 // Start — skipped when imported by tests (NODE_ENV=test set by Vitest)
 // ---------------------------------------------------------------------------
 
+let tickInterval: NodeJS.Timeout | null = null;
+
 if (process.env.NODE_ENV !== 'test') {
   const PORT = parseInt(process.env.PORT ?? '3000', 10);
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`opencontext server  →  http://0.0.0.0:${PORT}`);
     console.log(`Ollama host         →  ${OLLAMA_HOST}`);
     console.log(`Context store       →  ${storePath}`);
     console.log(`UI                  →  ${fs.existsSync(publicDir) ? 'served from /public' : 'not built'}`);
   });
+
+  const ENABLE_BACKGROUND = process.env.OPENCONTEXT_BACKGROUND !== 'false';
+  const TICK_INTERVAL = parseInt(process.env.OPENCONTEXT_TICK_INTERVAL ?? '300000', 10);
+
+  if (ENABLE_BACKGROUND) {
+    tickInterval = setInterval(async () => {
+      try {
+        const schema = loadSchema();
+        await selfImprovementTick(store, schema, observer, analyzer);
+      } catch (error) {
+        console.error('[opencontext] self-improvement tick failed:', error);
+      }
+    }, TICK_INTERVAL);
+    console.log(`Self-improvement    →  enabled (every ${TICK_INTERVAL / 1000}s)`);
+  }
+
+  function gracefulShutdown() {
+    if (tickInterval) clearInterval(tickInterval);
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(1), 5000);
+  }
+
+  process.on('SIGTERM', gracefulShutdown);
+  process.on('SIGINT', gracefulShutdown);
 }

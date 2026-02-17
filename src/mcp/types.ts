@@ -4,6 +4,9 @@ export interface ContextEntry {
   tags: string[];
   source: string;
   bubbleId?: string;
+  contextType?: string;
+  structuredData?: Record<string, unknown>;
+  archived?: boolean;
   createdAt: string;
   updatedAt: string;
 }

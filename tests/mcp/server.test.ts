@@ -51,7 +51,7 @@ describe('MCP Server', () => {
     expect(toolNames).toContain('get_bubble');
     expect(toolNames).toContain('update_bubble');
     expect(toolNames).toContain('delete_bubble');
-    expect(tools.tools).toHaveLength(11);
+    expect(tools.tools).toHaveLength(24);
   });
 
   describe('save_context tool', () => {

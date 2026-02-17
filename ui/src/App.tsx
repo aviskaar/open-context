@@ -11,6 +11,8 @@ import VendorExport from './components/VendorExport';
 import ContextsManager from './components/ContextsManager';
 import BubblesManager from './components/BubblesManager';
 import ChatWithContext from './components/ChatWithContext';
+import SchemaEditor from './components/SchemaEditor';
+import AwarenessPanel from './components/AwarenessPanel';
 import './App.css';
 
 export default function App() {
@@ -30,6 +32,8 @@ export default function App() {
               <Route path="/contexts" element={<ContextsManager />} />
               <Route path="/bubbles" element={<BubblesManager />} />
               <Route path="/chat" element={<ChatWithContext />} />
+              <Route path="/schema" element={<SchemaEditor />} />
+              <Route path="/awareness" element={<AwarenessPanel />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

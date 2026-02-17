@@ -2,6 +2,8 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { randomUUID } from 'crypto';
 import { ContextEntry, ContextStore, Bubble } from './types.js';
+import { Schema, validateEntry, buildContentFromData } from './schema.js';
+import { createObserver } from './observer.js';
 
 const STORE_VERSION = 1;
 
@@ -10,7 +12,7 @@ function getDefaultStorePath(): string {
   return join(home, '.opencontext', 'contexts.json');
 }
 
-export function createStore(storePath?: string) {
+export function createStore(storePath?: string, observer?: ReturnType<typeof createObserver>) {
   const filePath = storePath || getDefaultStorePath();
 
   function load(): ContextStore {
@@ -59,17 +61,83 @@ export function createStore(storePath?: string) {
     }
     store.entries.push(entry);
     save(store);
+    observer?.log({ action: 'write', tool: 'save_context', entryIds: [entry.id] });
+    // Write-triggered cache refresh every 10 writes
+    if (observer) {
+      const total = observer.getSummary().totalWrites;
+      if (total % 10 === 0) {
+        import('./awareness.js').then(({ refreshCache }) => {
+          import('./schema.js').then(({ loadSchema }) => {
+            const schema = loadSchema();
+            refreshCache({ listContexts, listBubbles } as ReturnType<typeof createStore>, schema, observer!);
+          }).catch(() => {});
+        }).catch(() => {});
+      }
+    }
     return entry;
   }
 
-  function recallContext(query: string): ContextEntry[] {
-    const store = load();
-    const lowerQuery = query.toLowerCase();
-    return store.entries.filter(
-      (entry) =>
-        entry.content.toLowerCase().includes(lowerQuery) ||
-        entry.tags.some((tag) => tag.toLowerCase().includes(lowerQuery)),
+  function saveTypedContext(
+    schema: Schema,
+    typeName: string,
+    data: Record<string, unknown>,
+    tags: string[] = [],
+    source: string = 'chat',
+    bubbleId?: string,
+  ): { entry: ContextEntry; errors: string[] } {
+    const validation = validateEntry(schema, typeName, data);
+    const content = buildContentFromData(typeName, data);
+    const entry = saveContext(content, tags, source, bubbleId);
+    entry.contextType = typeName;
+    entry.structuredData = data;
+    // Persist the type and structured data
+    const storeData = load();
+    const idx = storeData.entries.findIndex((e) => e.id === entry.id);
+    if (idx >= 0) {
+      storeData.entries[idx] = entry;
+      save(storeData);
+    }
+    observer?.log({ action: 'write', tool: 'save_typed_context', contextType: typeName, entryIds: [entry.id] });
+    return { entry, errors: validation.errors };
+  }
+
+  function queryByType(
+    typeName: string,
+    filter?: Record<string, unknown>,
+  ): ContextEntry[] {
+    const storeData = load();
+    let results = storeData.entries.filter(
+      (e) => !e.archived && e.contextType === typeName,
     );
+    if (filter) {
+      results = results.filter((e) => {
+        if (!e.structuredData) return false;
+        return Object.entries(filter).every(
+          ([key, val]) => e.structuredData![key] === val,
+        );
+      });
+    }
+    observer?.log({ action: 'read', tool: 'query_by_type', contextType: typeName, entryIds: results.map((e) => e.id) });
+    return results;
+  }
+
+  function recallContext(query: string): ContextEntry[] {
+    const storeData = load();
+    const lowerQuery = query.toLowerCase();
+    const results = storeData.entries.filter(
+      (entry) =>
+        !entry.archived &&
+        (entry.content.toLowerCase().includes(lowerQuery) ||
+        entry.tags.some((tag) => tag.toLowerCase().includes(lowerQuery))),
+    );
+    if (observer) {
+      if (results.length === 0) {
+        observer.log({ action: 'query_miss', tool: 'recall_context', query });
+      } else {
+        observer.log({ action: 'read', tool: 'recall_context', query, entryIds: results.map((e) => e.id) });
+      }
+    }
+    return results;
   }
 
   function listContexts(tag?: string): ContextEntry[] {
@@ -119,6 +187,7 @@ export function createStore(storePath?: string) {
     content: string,
     tags?: string[],
     bubbleId?: string | null,
+    archived?: boolean,
   ): ContextEntry | undefined {
     const store = load();
     const entry = store.entries.find((e) => e.id === id);
@@ -136,6 +205,20 @@ export function createStore(storePath?: string) {
         entry.bubbleId = bubbleId;
       }
     }
+    if (archived !== undefined) {
+      entry.archived = archived;
+    }
+    entry.updatedAt = new Date().toISOString();
+    save(store);
+    observer?.log({ action: 'update', tool: 'update_context', entryIds: [id] });
+    return entry;
+  }
+
+  function updateContextType(id: string, contextType: string): ContextEntry | undefined {
+    const store = load();
+    const entry = store.entries.find((e) => e.id === id);
+    if (!entry) return undefined;
+    entry.contextType = contextType;
     entry.updatedAt = new Date().toISOString();
     save(store);
     return entry;
@@ -209,6 +292,8 @@ export function createStore(storePath?: string) {
   return {
     // contexts
     saveContext,
+    saveTypedContext,
+    queryByType,
     recallContext,
     listContexts,
     listContextsByBubble,
@@ -216,6 +301,7 @@ export function createStore(storePath?: string) {
     searchContexts,
     getContext,
     updateContext,
+    updateContextType,
     // bubbles
     createBubble,
     listBubbles,
