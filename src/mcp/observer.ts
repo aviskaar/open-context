@@ -60,8 +60,16 @@ function emptySummary(): ObservationLog['summary'] {
   };
 }
 
+const FLUSH_INTERVAL_MS = 500;
+const FLUSH_BATCH_SIZE = 10;
+
 export function createObserver(observerPath?: string) {
   const filePath = observerPath ?? getDefaultObserverPath();
+
+  // In-memory write buffer — flushed to disk periodically or when full
+  let pendingEvents: ObservationEvent[] = [];
+  let pendingSummaryDeltas: Array<(s: ObservationLog['summary']) => void> = [];
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
   function loadLog(): ObservationLog {
     if (!existsSync(filePath)) {
@@ -103,49 +111,82 @@ export function createObserver(observerPath?: string) {
     writeFileSync(filePath, JSON.stringify(log, null, 2), 'utf-8');
   }
 
+  function flushBuffer(): void {
+    if (pendingEvents.length === 0 && pendingSummaryDeltas.length === 0) return;
+    if (flushTimer !== null) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    const events = pendingEvents.splice(0);
+    const deltas = pendingSummaryDeltas.splice(0);
+    if (events.length === 0 && deltas.length === 0) return;
+
+    const obsLog = loadLog();
+    for (const event of events) {
+      obsLog.events.push(event);
+    }
+    for (const applyDelta of deltas) {
+      applyDelta(obsLog.summary);
+    }
+    if (obsLog.events.length > MAX_EVENTS) {
+      obsLog.events = obsLog.events.slice(obsLog.events.length - TRIM_TO);
+    }
+    persistLog(obsLog);
+  }
+
+  function scheduleFlush(): void {
+    if (flushTimer !== null) return;
+    flushTimer = setTimeout(() => {
+      flushTimer = null;
+      flushBuffer();
+    }, FLUSH_INTERVAL_MS);
+  }
+
   function log(event: Omit<ObservationEvent, 'timestamp'>): void {
     const fullEvent: ObservationEvent = {
       timestamp: new Date().toISOString(),
       ...event,
     };
 
-    const obsLog = loadLog();
-    obsLog.events.push(fullEvent);
+    pendingEvents.push(fullEvent);
 
-    // Update summary
-    const s = obsLog.summary;
-    s.lastActivity = fullEvent.timestamp;
-
-    if (event.action === 'read') {
-      s.totalReads++;
-      if (event.contextType) {
-        s.typeReadFrequency[event.contextType] = (s.typeReadFrequency[event.contextType] ?? 0) + 1;
-      }
-    } else if (event.action === 'write') {
-      s.totalWrites++;
-      if (event.contextType) {
-        s.typeWriteFrequency[event.contextType] = (s.typeWriteFrequency[event.contextType] ?? 0) + 1;
-      }
-    } else if (event.action === 'query_miss') {
-      s.totalMisses++;
-      if (event.query) {
-        const q = event.query;
-        s.missedQueryCount[q] = (s.missedQueryCount[q] ?? 0) + 1;
-        if (!s.missedQueries.includes(q)) {
-          s.missedQueries.push(q);
+    // Capture summary delta in a closure so we don't read disk on every log() call
+    const ts = fullEvent.timestamp;
+    pendingSummaryDeltas.push((s) => {
+      s.lastActivity = ts;
+      if (event.action === 'read') {
+        s.totalReads++;
+        if (event.contextType) {
+          s.typeReadFrequency[event.contextType] = (s.typeReadFrequency[event.contextType] ?? 0) + 1;
+        }
+      } else if (event.action === 'write') {
+        s.totalWrites++;
+        if (event.contextType) {
+          s.typeWriteFrequency[event.contextType] = (s.typeWriteFrequency[event.contextType] ?? 0) + 1;
+        }
+      } else if (event.action === 'query_miss') {
+        s.totalMisses++;
+        if (event.query) {
+          const q = event.query;
+          s.missedQueryCount[q] = (s.missedQueryCount[q] ?? 0) + 1;
+          if (!s.missedQueries.includes(q)) {
+            s.missedQueries.push(q);
+          }
         }
       }
-    }
+    });
 
-    // Rotate if needed
-    if (obsLog.events.length > MAX_EVENTS) {
-      obsLog.events = obsLog.events.slice(obsLog.events.length - TRIM_TO);
+    // Flush immediately when batch size is reached; otherwise schedule
+    if (pendingEvents.length >= FLUSH_BATCH_SIZE) {
+      flushBuffer();
+    } else {
+      scheduleFlush();
     }
-
-    persistLog(obsLog);
   }
 
   function logSelfImprovement(record: SelfImprovementRecord): void {
+    // Flush pending events first so they are included in the file we are about to write
+    flushBuffer();
     const obsLog = loadLog();
     obsLog.improvements.push(record);
     // Keep at most 200 improvement records
@@ -156,15 +197,19 @@ export function createObserver(observerPath?: string) {
   }
 
   function getSummary(): ObservationLog['summary'] {
+    // Flush pending deltas so the returned summary is up to date
+    flushBuffer();
     return loadLog().summary;
   }
 
   function getMissedQueries(): string[] {
+    flushBuffer();
     const s = loadLog().summary;
     return s.missedQueries;
   }
 
   function getTypePopularity(): Record<string, { reads: number; writes: number }> {
+    flushBuffer();
     const s = loadLog().summary;
     const allTypes = new Set([
       ...Object.keys(s.typeReadFrequency),
@@ -181,6 +226,7 @@ export function createObserver(observerPath?: string) {
   }
 
   function rotateIfNeeded(): void {
+    flushBuffer();
     const obsLog = loadLog();
     if (obsLog.events.length > MAX_EVENTS) {
       obsLog.events = obsLog.events.slice(obsLog.events.length - TRIM_TO);
@@ -189,6 +235,7 @@ export function createObserver(observerPath?: string) {
   }
 
   function getRecentImprovements(since?: string): SelfImprovementRecord[] {
+    flushBuffer();
     const obsLog = loadLog();
     if (!since) {
       const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -198,10 +245,18 @@ export function createObserver(observerPath?: string) {
   }
 
   function loadRaw(): ObservationLog {
+    flushBuffer();
     return loadLog();
   }
 
   function persistRaw(log: ObservationLog): void {
+    // Discard any pending buffer — caller is overwriting the whole log
+    pendingEvents.length = 0;
+    pendingSummaryDeltas.length = 0;
+    if (flushTimer !== null) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
     persistLog(log);
   }
 
@@ -215,6 +270,7 @@ export function createObserver(observerPath?: string) {
     getRecentImprovements,
     loadRaw,
     persistRaw,
+    flushBuffer,
     filePath,
   };
 }

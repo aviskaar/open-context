@@ -20,8 +20,8 @@ export interface SelfModel {
     contextCount: number;
     typeBreakdown: Record<string, number>;
     bubbleCount: number;
-    oldestEntry: string;
-    newestEntry: string;
+    oldestEntryDate: string;
+    newestEntryDate: string;
   };
   coverage: {
     typesWithEntries: string[];
@@ -51,7 +51,7 @@ function daysSince(isoDate: string): number {
   return (Date.now() - new Date(isoDate).getTime()) / (1000 * 60 * 60 * 24);
 }
 
-const OPPOSITION_PAIRS = [
+export const OPPOSITION_PAIRS: ReadonlyArray<[string, string]> = [
   ['prefer', 'avoid'],
   ['use', "don't use"],
   ['always', 'never'],
@@ -114,8 +114,8 @@ export function buildSelfModel(
   }
 
   const dates = activeEntries.map((e) => e.createdAt).sort();
-  const oldestEntry = dates[0] ?? new Date().toISOString();
-  const newestEntry = dates[dates.length - 1] ?? new Date().toISOString();
+  const oldestEntryDate = dates[0] ?? new Date().toISOString();
+  const newestEntryDate = dates[dates.length - 1] ?? new Date().toISOString();
 
   // Coverage
   const definedTypes = schema ? schema.types.map((t) => t.name) : [];
@@ -201,8 +201,8 @@ export function buildSelfModel(
       contextCount: activeEntries.length,
       typeBreakdown,
       bubbleCount: bubbles.length,
-      oldestEntry,
-      newestEntry,
+      oldestEntryDate,
+      newestEntryDate,
     },
     coverage: {
       typesWithEntries,

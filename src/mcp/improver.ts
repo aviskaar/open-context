@@ -21,8 +21,16 @@ function contentSimilarity(a: string, b: string): number {
   return union === 0 ? 0 : intersection / union;
 }
 
+// Limit the candidate set to avoid O(n²) blowup at scale.
+// With MAX_DUPLICATE_CANDIDATES=100 the inner loop is at most 4,950 iterations.
+const MAX_DUPLICATE_CANDIDATES = 100;
+
 function detectNearDuplicates(entries: ContextEntry[]): Array<[string, string]> {
-  const active = entries.filter((e) => !e.archived);
+  // Take the most-recently-updated entries so we compare the most relevant slice
+  const active = entries
+    .filter((e) => !e.archived)
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .slice(0, MAX_DUPLICATE_CANDIDATES);
   const pairs: Array<[string, string]> = [];
   for (let i = 0; i < active.length; i++) {
     for (let j = i + 1; j < active.length; j++) {
@@ -253,11 +261,17 @@ export async function selfImprovementTick(
     }
   }
 
-  // 4. Archive truly stale entries (>180 days, never read)
+  // 4. Archive truly stale entries (>180 days, never individually read)
   if (Date.now() < deadline) {
+    // Build a set of entry IDs that have appeared in at least one read event
+    const rawLog = observer.loadRaw();
+    const readEntryIds = new Set(
+      rawLog.events
+        .filter((ev) => ev.action === 'read' && ev.entryIds)
+        .flatMap((ev) => ev.entryIds ?? []),
+    );
     const archivable = selfModel.freshness.stalestEntries.filter((e) => {
-      const reads = summary.typeReadFrequency[e.type ?? 'untyped'] ?? 0;
-      return daysBetween(e.updatedAt, new Date().toISOString()) > 180 && reads === 0;
+      return daysBetween(e.updatedAt, new Date().toISOString()) > 180 && !readEntryIds.has(e.id);
     });
     if (archivable.length > 0) {
       actions.push({

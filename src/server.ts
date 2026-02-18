@@ -462,8 +462,8 @@ app.get('/api/pending-actions', (_req: Request, res: Response) => {
 
 app.post('/api/pending-actions/:id/approve', async (req: Request, res: Response) => {
   const controlPlane = createControlPlane(observer);
-  const { executed, result, action: approvedAction } = controlPlane.approve(req.params['id'] as string);
-  if (executed && approvedAction) {
+  const { approved, result, action: approvedAction } = controlPlane.approve(req.params['id'] as string);
+  if (approved && approvedAction) {
     try {
       const { executeImprovement } = await import('./mcp/improver.js');
       const schema = loadSchema();
@@ -504,8 +504,8 @@ app.post('/api/pending-actions/bulk', async (req: Request, res: Response) => {
     const { executeImprovement } = await import('./mcp/improver.js');
     const results = [];
     for (const id of action_ids) {
-      const { executed, result, action: approvedAction } = controlPlane.approve(id);
-      if (executed && approvedAction) {
+      const { approved, result, action: approvedAction } = controlPlane.approve(id);
+      if (approved && approvedAction) {
         try {
           await executeImprovement(approvedAction.action, store, schema, observer);
           results.push({ id, ok: true });

@@ -103,27 +103,29 @@ export function createControlPlane(observer: ReturnType<typeof createObserver>) 
     return (raw.pendingActions ?? []).filter((a) => a.status === 'pending');
   }
 
-  function executeAction(pending: PendingAction): string {
-    // Actions are executed via the improver — here we just mark it approved
-    // and return a description. The caller (server tick or REST handler) calls
-    // the improver's executeImprovement to actually apply the change.
-    return `Action ${pending.id} (${pending.action.type}) approved.`;
+  /**
+   * Marks a pending action as approved and returns a description string.
+   * NOTE: This does NOT execute the action. The caller (REST handler or server tick)
+   * is responsible for calling `executeImprovement` from the improver to apply changes.
+   */
+  function markApproved(pending: PendingAction): string {
+    return `Action ${pending.id} (${pending.action.type}) approved and ready for execution.`;
   }
 
-  function approve(id: string): { executed: boolean; result: string; action?: PendingAction } {
+  function approve(id: string): { approved: boolean; result: string; action?: PendingAction } {
     const raw = observer.loadRaw();
     raw.pendingActions = raw.pendingActions ?? [];
     const pending = raw.pendingActions.find((a) => a.id === id);
     if (!pending) {
-      return { executed: false, result: `No pending action found with ID "${id}".` };
+      return { approved: false, result: `No pending action found with ID "${id}".` };
     }
     if (pending.status !== 'pending') {
-      return { executed: false, result: `Action ${id} is already ${pending.status}.` };
+      return { approved: false, result: `Action ${id} is already ${pending.status}.` };
     }
     pending.status = 'approved';
     observer.persistRaw(raw);
-    const result = executeAction(pending);
-    return { executed: true, result, action: pending };
+    const result = markApproved(pending);
+    return { approved: true, result, action: pending };
   }
 
   function dismiss(id: string, reason?: string): boolean {
@@ -146,11 +148,18 @@ export function createControlPlane(observer: ReturnType<typeof createObserver>) 
           });
         }
       }
-      // Auto-learn: if user dismisses 3+ of same type/contextType combo, add pattern protection
-      const sameDismissals = raw.pendingActions.filter(
-        (a) => a.action.type === pending.action.type && a.status === 'dismissed',
+      // Auto-learn: if the user dismisses 3+ distinct entries for the same action type,
+      // add a pattern protection to stop suggesting that action type globally.
+      // We count dismissals that have per-entry protections (i.e. they had explicit entries)
+      // to avoid counting unrelated action-type dismissals.
+      const distinctEntryDismissals = raw.pendingActions.filter(
+        (a) =>
+          a.action.type === pending.action.type &&
+          a.status === 'dismissed' &&
+          a.action.entries &&
+          a.action.entries.length > 0,
       );
-      if (sameDismissals.length >= 3) {
+      if (distinctEntryDismissals.length >= 3) {
         const alreadyHasPattern = raw.protections.some(
           (p) => p.pattern === pending.action.type && !p.entryId,
         );
@@ -158,7 +167,7 @@ export function createControlPlane(observer: ReturnType<typeof createObserver>) 
           raw.protections.push({
             pattern: pending.action.type,
             protectedFrom: [pending.action.type],
-            reason: `Auto-learned: user dismissed ${sameDismissals.length} "${pending.action.type}" actions`,
+            reason: `Auto-learned: user dismissed ${distinctEntryDismissals.length} distinct "${pending.action.type}" entry actions`,
             createdAt: new Date().toISOString(),
           });
         }
@@ -168,10 +177,10 @@ export function createControlPlane(observer: ReturnType<typeof createObserver>) 
     return true;
   }
 
-  function bulkApprove(ids: string[]): Array<{ id: string; executed: boolean; result: string }> {
+  function bulkApprove(ids: string[]): Array<{ id: string; approved: boolean; result: string }> {
     return ids.map((id) => {
-      const { executed, result } = approve(id);
-      return { id, executed, result };
+      const { approved, result } = approve(id);
+      return { id, approved, result };
     });
   }
 
