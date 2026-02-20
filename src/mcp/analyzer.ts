@@ -1,6 +1,6 @@
 import { Ollama } from 'ollama';
 import { ContextEntry } from './types.js';
-import { Gap, Contradiction } from './awareness.js';
+import { Gap, Contradiction, OPPOSITION_PAIRS } from './awareness.js';
 import { SchemaType, SchemaField } from './schema.js';
 
 export interface SuggestedType {
@@ -190,15 +190,6 @@ export class ContextAnalyzer {
   // --- Deterministic fallbacks ---
 
   private deterministicContradictions(entries: ContextEntry[]): Contradiction[] {
-    const OPPOSITION_PAIRS = [
-      ['prefer', 'avoid'],
-      ['use', "don't use"],
-      ['always', 'never'],
-      ['composition', 'inheritance'],
-      ['functional', 'class'],
-      ['stateless', 'stateful'],
-      ['monolith', 'microservice'],
-    ];
     const active = entries.filter((e) => !e.archived).slice(-50);
     const contradictions: Contradiction[] = [];
     for (let i = 0; i < active.length; i++) {

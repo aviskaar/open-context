@@ -556,6 +556,18 @@ All data is stored in the mounted volume — no browser localStorage is used. Th
 | `OLLAMA_MODEL` | `gpt-oss:20b` | Default model for preference analysis |
 | `OPENCONTEXT_STORE_PATH` | `/root/.opencontext/contexts.json` | MCP context store path (preferences files live in the same directory) |
 
+#### Self-aware context runtime variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OPENCONTEXT_BACKGROUND` | `true` | Enable/disable the background self-improvement tick (`false` to disable) |
+| `OPENCONTEXT_TICK_INTERVAL` | `300000` | Interval between self-improvement ticks in milliseconds (default: 5 minutes) |
+| `OPENCONTEXT_TICK_TIMEOUT` | `30000` | Max time allowed per self-improvement tick in milliseconds (default: 30 seconds) |
+| `OPENCONTEXT_PENDING_TTL` | `604800000` | TTL for pending human-approval actions in milliseconds (default: 7 days) |
+| `OPENCONTEXT_AUTO_APPROVE_LOW` | `true` | Auto-execute low-risk improvement actions without human approval |
+| `OPENCONTEXT_AUTO_APPROVE_MEDIUM` | `false` | Auto-execute medium-risk improvement actions without human approval |
+| `OPENCONTEXT_AUTO_APPROVE_HIGH` | `false` | Auto-execute high-risk improvement actions without human approval |
+
 `host.docker.internal` is a special DNS name that resolves to your host machine's IP from inside a Docker container. On Linux you may need `--add-host=host.docker.internal:host-gateway`.
 
 ### REST API

@@ -5,7 +5,6 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Select } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 
 interface SchemaField {
@@ -329,7 +328,7 @@ export default function SchemaEditor() {
       <div className="space-y-3">
         {schema.types.map((type, index) => (
           <TypeEditor
-            key={index}
+            key={type.name}
             type={type}
             onChange={(t) => updateType(index, t)}
             onDelete={() => deleteType(index)}

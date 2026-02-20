@@ -22,8 +22,8 @@ interface SelfModel {
     contextCount: number;
     typeBreakdown: Record<string, number>;
     bubbleCount: number;
-    oldestEntry: string;
-    newestEntry: string;
+    oldestEntryDate: string;
+    newestEntryDate: string;
   };
   coverage: {
     typesWithEntries: string[];
@@ -170,8 +170,9 @@ export default function AwarenessPanel() {
 
   async function approveAction(id: string) {
     await fetch(`/api/pending-actions/${id}/approve`, { method: 'POST' });
+    // Use optimistic update only — fetchData would flash a loading state immediately
+    // after the remove and would race with the optimistic update.
     setPending((prev) => prev.filter((a) => a.id !== id));
-    fetchData();
   }
 
   async function dismissAction(id: string) {
@@ -191,8 +192,8 @@ export default function AwarenessPanel() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action_ids: ids, decision: 'approve' }),
     });
+    // Optimistic update — remove approved actions from local state without re-fetching
     setPending((prev) => prev.filter((a) => !ids.includes(a.id)));
-    fetchData();
   }
 
   if (loading) {

@@ -123,22 +123,22 @@ describe('control-plane.ts', () => {
   describe('approve', () => {
     it('approves a pending action', () => {
       const action = cp.enqueue(makePendingArgs('merge_duplicates', 'medium'));
-      const { executed, result } = cp.approve(action.id);
-      expect(executed).toBe(true);
+      const { approved, result } = cp.approve(action.id);
+      expect(approved).toBe(true);
       expect(result).toContain('approved');
     });
 
     it('returns failure for unknown ID', () => {
-      const { executed, result } = cp.approve('nonexistent-id');
-      expect(executed).toBe(false);
+      const { approved, result } = cp.approve('nonexistent-id');
+      expect(approved).toBe(false);
       expect(result).toContain('No pending action');
     });
 
     it('cannot approve already-approved action', () => {
       const action = cp.enqueue(makePendingArgs('archive_stale', 'high'));
       cp.approve(action.id);
-      const { executed, result } = cp.approve(action.id);
-      expect(executed).toBe(false);
+      const { approved, result } = cp.approve(action.id);
+      expect(approved).toBe(false);
       expect(result).toContain('already');
     });
   });
@@ -200,7 +200,7 @@ describe('control-plane.ts', () => {
       const a2 = cp.enqueue(makePendingArgs('promote_to_type', 'medium'));
       const results = cp.bulkApprove([a1.id, a2.id]);
       expect(results).toHaveLength(2);
-      expect(results.every((r) => r.executed)).toBe(true);
+      expect(results.every((r) => r.approved)).toBe(true);
     });
 
     it('bulk dismisses multiple actions', () => {

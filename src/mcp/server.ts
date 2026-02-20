@@ -638,8 +638,8 @@ export function createMcpServer(storePath?: string) {
       const schema = loadSchema();
       const results: string[] = [];
       for (const id of ids) {
-        const { executed, result, action: approvedAction } = controlPlane.approve(id);
-        if (executed && approvedAction) {
+        const { approved, result, action: approvedAction } = controlPlane.approve(id);
+        if (approved && approvedAction) {
           try {
             const { executeImprovement } = await import('./improver.js');
             await executeImprovement(approvedAction.action, store, schema, observer);

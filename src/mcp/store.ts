@@ -45,6 +45,8 @@ export function createStore(storePath?: string, observer?: ReturnType<typeof cre
     tags: string[] = [],
     source: string = 'chat',
     bubbleId?: string,
+    contextType?: string,
+    structuredData?: Record<string, unknown>,
   ): ContextEntry {
     const store = load();
     const now = new Date().toISOString();
@@ -58,6 +60,12 @@ export function createStore(storePath?: string, observer?: ReturnType<typeof cre
     };
     if (bubbleId !== undefined) {
       entry.bubbleId = bubbleId;
+    }
+    if (contextType !== undefined) {
+      entry.contextType = contextType;
+    }
+    if (structuredData !== undefined) {
+      entry.structuredData = structuredData;
     }
     store.entries.push(entry);
     save(store);
@@ -87,16 +95,8 @@ export function createStore(storePath?: string, observer?: ReturnType<typeof cre
   ): { entry: ContextEntry; errors: string[] } {
     const validation = validateEntry(schema, typeName, data);
     const content = buildContentFromData(typeName, data);
-    const entry = saveContext(content, tags, source, bubbleId);
-    entry.contextType = typeName;
-    entry.structuredData = data;
-    // Persist the type and structured data
-    const storeData = load();
-    const idx = storeData.entries.findIndex((e) => e.id === entry.id);
-    if (idx >= 0) {
-      storeData.entries[idx] = entry;
-      save(storeData);
-    }
+    // Pass contextType and structuredData into saveContext so only one write happens
+    const entry = saveContext(content, tags, source, bubbleId, typeName, data);
     observer?.log({ action: 'write', tool: 'save_typed_context', contextType: typeName, entryIds: [entry.id] });
     return { entry, errors: validation.errors };
   }

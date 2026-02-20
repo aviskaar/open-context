@@ -48,7 +48,7 @@ vi.mock('../src/mcp/schema.js', () => ({
 }));
 
 const mockSelfModel = vi.hoisted(() => ({
-  identity: { contextCount: 5, typeBreakdown: { decision: 3 }, bubbleCount: 1, oldestEntry: '', newestEntry: '' },
+  identity: { contextCount: 5, typeBreakdown: { decision: 3 }, bubbleCount: 1, oldestEntryDate: '', newestEntryDate: '' },
   coverage: { typesWithEntries: ['decision'], typesEmpty: [], untyped: 2 },
   freshness: { recentlyUpdated: 5, stale: 0, stalestEntries: [] },
   gaps: [],
@@ -76,7 +76,7 @@ vi.mock('../src/mcp/analyzer.js', () => ({
 
 const mockControlPlane = vi.hoisted(() => ({
   listPending: vi.fn(() => []),
-  approve: vi.fn(() => ({ executed: false, result: 'No pending action found with ID "nope".' })),
+  approve: vi.fn(() => ({ approved: false, result: 'No pending action found with ID "nope".' })),
   dismiss: vi.fn(() => false),
   bulkApprove: vi.fn(() => []),
   bulkDismiss: vi.fn(),
@@ -112,7 +112,7 @@ describe('server.ts — awareness endpoints', () => {
     vi.clearAllMocks();
     // Re-set return values after clearAllMocks
     mockControlPlane.listPending.mockReturnValue([]);
-    mockControlPlane.approve.mockReturnValue({ executed: false, result: 'No pending action found with ID "nope".' });
+    mockControlPlane.approve.mockReturnValue({ approved: false, result: 'No pending action found with ID "nope".' });
     mockControlPlane.dismiss.mockReturnValue(false);
     mockObserver.loadRaw.mockReturnValue({ events: [], summary: { totalReads: 0, totalWrites: 0, totalMisses: 0, missedQueries: [], missedQueryCount: {}, typeReadFrequency: {}, typeWriteFrequency: {}, lastActivity: '' }, improvements: [], pendingActions: [], protections: [] });
     mockStore.listContexts.mockReturnValue([]);
@@ -224,7 +224,7 @@ describe('server.ts — awareness endpoints', () => {
 
     it('returns 200 when action approved and executed successfully', async () => {
       const fakeAction = { id: 'pa-1', action: { type: 'auto_tag', entries: [] }, risk: 'low', description: 'Auto-tag', reasoning: '', preview: {}, status: 'pending', createdAt: '', expiresAt: '' };
-      mockControlPlane.approve.mockReturnValue({ executed: true, result: 'Action pa-1 approved.', action: fakeAction });
+      mockControlPlane.approve.mockReturnValue({ approved: true, result: 'Action pa-1 approved.', action: fakeAction });
       const res = await request(app).post('/api/pending-actions/pa-1/approve');
       expect(res.status).toBe(200);
       expect(res.body.ok).toBe(true);
@@ -266,7 +266,7 @@ describe('server.ts — awareness endpoints', () => {
 
     it('bulk approves actions', async () => {
       const fakeAction = { id: 'pa-1', action: { type: 'auto_tag', entries: [] }, risk: 'low', description: '', reasoning: '', preview: {}, status: 'pending', createdAt: '', expiresAt: '' };
-      mockControlPlane.approve.mockReturnValue({ executed: true, result: 'ok', action: fakeAction });
+      mockControlPlane.approve.mockReturnValue({ approved: true, result: 'ok', action: fakeAction });
       const res = await request(app)
         .post('/api/pending-actions/bulk')
         .send({ action_ids: ['pa-1'], decision: 'approve' });
