@@ -6,7 +6,7 @@
 
 # open-context
 
-### Save your context, your way
+### Your AI memory, portable and private
 
 **Import** chat history from any AI platform · **Manage** context with MCP · **Export** to Claude, ChatGPT, or Gemini
 
