@@ -339,7 +339,7 @@ export default function Landing() {
       </section>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Aviskaar AI Lab                                                      */}
+      {/* Aviskaar AI Research Lab                                                      */}
       {/* ------------------------------------------------------------------ */}
       <section className="px-6 md:px-12 py-16 border-t border-border bg-muted/5">
         <div className="max-w-3xl mx-auto flex flex-col items-center text-center gap-4">
@@ -349,9 +349,9 @@ export default function Landing() {
             rel="noopener noreferrer"
             className="hover:opacity-80 transition-opacity"
           >
-            <img src="/dark-logo-aviskaar.png" alt="Aviskaar AI Lab" className="h-24 md:h-32" />
+            <img src="/dark-logo-aviskaar.png" alt="Aviskaar AI Research Lab" className="h-24 md:h-32" />
           </a>
-          <p className="text-sm text-muted-foreground">Made with ❤️ by <a href="http://aviskaar.com/" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors underline underline-offset-2">Aviskaar AI Lab</a></p>
+          <p className="text-sm text-muted-foreground">Made with ❤️ by <a href="http://aviskaar.com/" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors underline underline-offset-2">Aviskaar AI Research Lab</a></p>
           <p className="text-sm text-muted-foreground">
             Building the future of AI context management
           </p>
