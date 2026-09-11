@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="/opencontext-logo.png" />
+  <title>Redis or MongoDB for an MCP Context Store: How to Choose</title>
+  <meta name="description" content="Redis and MongoDB both back open-context's MCP memory store. Here's how each one stores contexts, where each breaks down, and how to choose between them." />
+  <link rel="canonical" href="https://open-context.dev/blog/redis-mongodb-mcp-store/" />
+  <meta property="og:title" content="Redis or MongoDB for an MCP Context Store: How to Choose" />
+  <meta property="og:description" content="Redis and MongoDB both back open-context's MCP memory store. Here's how each one stores contexts, where each breaks down, and how to choose between them." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://open-context.dev/blog/redis-mongodb-mcp-store/" />
+  <meta property="og:image" content="https://open-context.dev/opencontext-logo.png" />
+  <meta property="article:published_time" content="2026-09-11" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Redis or MongoDB for an MCP Context Store: How to Choose" />
+  <meta name="twitter:description" content="How Redis and MongoDB each store MCP context entries in open-context, where each one breaks down, and how to pick between them." />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BlogPosting",
+        "headline": "Redis or MongoDB for an MCP Context Store: How to Choose",
+        "description": "Redis and MongoDB both back open-context's MCP memory store. Here's how each one stores contexts, where each breaks down, and how to choose between them.",
+        "datePublished": "2026-09-11",
+        "dateModified": "2026-09-11",
+        "mainEntityOfPage": { "@type": "WebPage", "@id": "https://open-context.dev/blog/redis-mongodb-mcp-store/" },
+        "image": "https://open-context.dev/opencontext-logo.png",
+        "author": { "@type": "Organization", "name": "open-context", "url": "https://open-context.dev/" },
+        "publisher": {
+          "@type": "Organization",
+          "name": "open-context",
+          "logo": { "@type": "ImageObject", "url": "https://open-context.dev/opencontext-logo.png" }
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Does open-context require Redis or MongoDB?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. The default store is a local JSON file at ~/.opencontext/contexts.json and needs no setup at all. Redis and MongoDB are optional backends you point open-context at by setting OPENCONTEXT_DB_URL, useful once you already run one of them or need a shared store." }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I switch from the default JSON store to Redis or MongoDB without losing data?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Run opencontext db migrate --to \"<connection-string>\" and it copies every context and bubble from your current store into the new one. It only reads the source store, so the existing data is never modified or deleted." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is search slower on Redis or MongoDB than on Postgres?",
+            "acceptedAnswer": { "@type": "Answer", "text": "On a large store, yes. Postgres pushes the search filter down into the database; Redis and MongoDB have no portable case-insensitive substring query, so open-context reads the whole contexts collection into memory and filters there. Results are identical across every backend, just not equally fast at scale." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does open-context support Valkey, Upstash, or Amazon ElastiCache?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Any of them work through the same redis:// or rediss:// connection string, since they all speak the Redis wire protocol. open-context also accepts a valkey:// alias and rewrites it automatically." }
+          },
+          {
+            "@type": "Question",
+            "name": "What happens if a saved context is larger than MongoDB's 16MB document limit?",
+            "acceptedAnswer": { "@type": "Answer", "text": "The save fails, because MongoDB rejects any BSON document over 16 megabytes. Redis, the JSON file, and every SQL backend open-context supports have no equivalent per-entry size cap." }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <style>
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Regular-Trial-BF63f6cbd970ee9.otf') format('opentype'); font-weight: 400; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Medium-Trial-BF63f6cbdb24b6d.otf') format('opentype'); font-weight: 500; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Bold-Trial-BF63f6cbda1877f.otf') format('opentype'); font-weight: 700; font-style: normal; }
+
+    :root {
+      --bg: #000000;
+      --card: #0a0a0a;
+      --border: #262626;
+      --fg: #fafafa;
+      --muted: #a1a1aa;
+      --accent: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Styrene A', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.7;
+    }
+    a { color: inherit; }
+    header {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; gap: 1.5rem;
+      padding: 0.9rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.9);
+      backdrop-filter: blur(6px);
+    }
+    header .brand { display: flex; align-items: center; gap: 0.5rem; margin-right: auto; text-decoration: none; }
+    header .brand img { width: 32px; height: 32px; border-radius: 3px; }
+    header .brand span { font-size: 0.9rem; font-weight: 600; letter-spacing: -0.01em; }
+    header nav { display: flex; align-items: center; gap: 1.5rem; font-size: 0.875rem; color: var(--muted); }
+    header nav a { text-decoration: none; }
+    header nav a:hover, header nav a.active { color: var(--fg); }
+
+    main { max-width: 720px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+    .meta { font-size: 0.8rem; color: var(--muted); font-family: monospace; margin-bottom: 0.75rem; }
+    h1 { font-size: 2.1rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; margin: 0 0 1.5rem; }
+    h2 { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.01em; margin: 2.5rem 0 1rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin: 1.75rem 0 0.6rem; }
+    p { color: #e4e4e7; margin: 0 0 1.1rem; }
+    p.lead { font-size: 1.1rem; color: var(--fg); }
+    ul, ol { color: #e4e4e7; padding-left: 1.3rem; margin: 0 0 1.1rem; }
+    li { margin-bottom: 0.4rem; }
+    code { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85em; }
+    pre { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto; font-size: 0.85rem; }
+    pre code { border: none; padding: 0; background: none; }
+    a.inline-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+    .takeaways {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin: 1.5rem 0 2.5rem;
+    }
+    .takeaways p.label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.7rem; color: var(--accent); font-weight: 600; margin: 0 0 0.75rem; }
+    .takeaways ul { margin: 0; }
+    .table-wrap { overflow-x: auto; margin: 0 0 1.1rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
+    th { color: var(--muted); font-weight: 600; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+    .cta {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin: 2.5rem 0;
+      text-align: center;
+    }
+    .cta a {
+      display: inline-block;
+      margin-top: 0.75rem;
+      background: var(--fg);
+      color: #000;
+      font-weight: 600;
+      padding: 0.55rem 1.25rem;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 0.75rem;
+      font-size: 0.75rem; color: var(--muted);
+    }
+    footer a { text-decoration: none; margin-left: 1rem; }
+    footer a:hover { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">
+      <img src="/opencontext-logo.png" alt="open-context" />
+      <span>open-context</span>
+    </a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/blog/" class="active">Blog</a>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <div class="meta">September 11, 2026 · 7 min read</div>
+      <h1>Redis or MongoDB for an MCP Context Store: How to Choose</h1>
+
+      <p class="lead">
+        Pick Redis if you already run Redis, Valkey, Upstash, or ElastiCache and want fast, simple
+        reads on a store that stays modest in size. Pick MongoDB if you want a managed, document-native
+        store with indexes and room to grow, and don't mind a 16MB cap per saved context. Both plug into
+        <a class="inline-link" href="/">open-context</a>'s MCP context store through the same connection
+        string, behave identically from Claude's point of view, and pass the exact same test suite.
+      </p>
+
+      <div class="takeaways">
+        <p class="label">Key takeaways</p>
+        <ul>
+          <li>open-context's BYODB layer treats Redis and MongoDB as one "document/KV" family behind a shared adapter, so <code>save_context</code>, <code>recall_context</code>, and <code>search_contexts</code> behave identically no matter which one you pick.</li>
+          <li>Redis stores each collection — contexts, bubbles — as a single hash and reads it with one <a class="inline-link" href="https://redis.io/docs/latest/commands/hgetall/" target="_blank" rel="noopener noreferrer">HGETALL</a> call, which Redis's own docs mark O(N) over the hash size.</li>
+          <li>MongoDB stores each context as its own document keyed by <code>_id</code>, with indexes on <code>bubbleId</code> and <code>createdAt</code> — but every document is capped at <a class="inline-link" href="https://www.mongodb.com/docs/manual/reference/limits/" target="_blank" rel="noopener noreferrer">16 megabytes</a> by the BSON format.</li>
+          <li>Search and tag filtering run in memory on both backends, because neither has a portable case-insensitive substring query — a large store searches faster on a SQL backend instead.</li>
+          <li>Switching later costs one command: <code>opencontext db migrate --to "&lt;connection-string&gt;"</code> copies everything across without touching the source.</li>
+        </ul>
+      </div>
+
+      <h2>Two backends, one shared contract</h2>
+      <p>
+        open-context's context store isn't tied to a single database. It's an async adapter interface
+        with three implementation families behind it: SQL (Postgres, MySQL, SQLite, and others), a
+        bespoke SurrealDB adapter, and "document/KV" — the family Redis and MongoDB both belong to,
+        alongside Firestore and DynamoDB. Adding a new document backend means writing six small methods
+        — <code>connect</code>, <code>close</code>, <code>ping</code>, <code>get</code>, <code>put</code>,
+        <code>remove</code>, <code>list</code> — and a shared adapter implements save, recall, search,
+        tagging, and bubble cascades on top, once. That's why the choice between Redis and MongoDB isn't
+        a choice between two different tools with different behavior — it's a choice between two ways of
+        storing the same JSON documents.
+      </p>
+
+      <h2>Redis: one hash per collection</h2>
+      <p>
+        Redis gets two hashes total, keyed <code>opencontext:contexts</code> and <code>opencontext:bubbles</code>.
+        Every context or bubble is a field in that hash, stored as a JSON string. A read is a single
+        <code>HGET</code>, a write is a single <code>HSET</code>, and listing a whole collection is one
+        <code>HGETALL</code> call that returns every field in the hash at once.
+      </p>
+      <p>
+        That last part is also Redis's limit here. <code>HGETALL</code> is <a class="inline-link" href="https://redis.io/docs/latest/commands/hgetall/" target="_blank" rel="noopener noreferrer">documented as O(N)</a>
+        over the size of the hash, and it's the call every list, search, and recall goes through — there's
+        no way to page through a Redis hash and get an atomic snapshot the way <code>HGETALL</code> does. For
+        a personal store or a small team, that's irrelevant; for a hash with tens of thousands of fields, it
+        means every search briefly loads the whole thing into memory and blocks the server for the call.
+      </p>
+      <p>
+        Connection strings are the standard <code>redis://host:6379</code> or <code>rediss://host:6379</code>
+        for TLS, and they work unmodified against Upstash, Amazon ElastiCache, and self-hosted Valkey —
+        open-context also accepts a <code>valkey://</code> alias and rewrites it before handing the URL to
+        the client. The client retries a first connection a few times and then gives up fast if Redis was
+        never reachable, but once it has connected successfully, it keeps reconnecting indefinitely — the
+        right behavior for an MCP server or HTTP server that needs to ride out a Redis restart or failover
+        without going down itself.
+      </p>
+
+      <h2>MongoDB: one document per context</h2>
+      <p>
+        MongoDB takes the opposite shape: every context and every bubble is its own document, keyed by
+        <code>_id</code> set to the same id open-context uses everywhere else. A lookup by id is a primary-key
+        hit, not a scan, and open-context creates indexes on <code>bubbleId</code> and <code>createdAt</code>
+        the first time it connects — useful once bubble filtering or ordering matters on a larger store.
+      </p>
+      <p>
+        The tradeoff is MongoDB's own document size cap. BSON documents <a class="inline-link" href="https://www.mongodb.com/docs/manual/reference/limits/" target="_blank" rel="noopener noreferrer">cannot exceed 16 megabytes</a>,
+        so a context entry that approaches that size — someone pasting an enormous log dump into
+        <code>save_context</code>, for instance — will fail to save on MongoDB where it would succeed
+        everywhere else open-context can store it. In practice this rarely matters for short notes and
+        memory summaries, but it's worth knowing before you pick MongoDB for a workload that saves large
+        blobs of text.
+      </p>
+      <p>
+        Connection strings are <code>mongodb://user:pass@host:27017/db</code> for a self-hosted instance,
+        or <code>mongodb+srv://...</code> for MongoDB Atlas — open-context preserves the <code>+srv</code>
+        scheme exactly, since dropping it would turn an Atlas SRV lookup into a direct connection to a host
+        that doesn't answer. Azure Cosmos DB's MongoDB API works through the same driver too, since it
+        speaks the same wire protocol.
+      </p>
+
+      <h2>Search is identical either way — and slower than SQL either way</h2>
+      <p>
+        <code>recall_context</code> and <code>search_contexts</code> behave the same on Redis and MongoDB:
+        both backends read every entry in the contexts collection and filter case-insensitively in memory,
+        because neither one has a portable case-insensitive substring predicate. Mongo has a regex operator;
+        Redis has none at all; Firestore and DynamoDB fall into the same bucket. Rather than give each
+        backend its own slightly different search behavior, open-context evaluates the filter in one place,
+        so results are byte-identical to what a SQL backend returns for the same query — the whole point of
+        the ~50-test conformance suite every backend has to pass.
+      </p>
+      <p>
+        The cost is real on a large store: a SQL backend pushes the filter down into the database and only
+        moves matching rows. If your context store grows past a size where full in-memory scans start to
+        show up as latency, that's the point to look at Postgres or SQLite instead — see
+        <a class="inline-link" href="/blog/sqlite-vs-postgres-mcp-store/">SQLite or Postgres: Choosing Your MCP Context Store</a>
+        for when concurrent writers or store size actually justify the move.
+      </p>
+
+      <h2>How to actually choose</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Situation</th><th>Pick</th></tr></thead>
+          <tbody>
+            <tr><td>You already run Redis, Valkey, Upstash, or ElastiCache for something else</td><td>Redis</td></tr>
+            <tr><td>You already run MongoDB or MongoDB Atlas</td><td>MongoDB</td></tr>
+            <tr><td>Want managed hosting with secondary indexes on a document store</td><td>MongoDB</td></tr>
+            <tr><td>Contexts might approach 16MB (large pasted transcripts, logs)</td><td>Redis, or a SQL backend</td></tr>
+            <tr><td>Store will grow into the millions of entries with frequent search</td><td>Postgres / SQLite</td></tr>
+            <tr><td>Not running any database yet</td><td>Stick with the default JSON file</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        The simplest rule holds for both: if you already run one, use it. Standing up a new database
+        purely to back an MCP memory store rarely pays for itself against the zero-setup default JSON file
+        at <code>~/.opencontext/contexts.json</code>.
+      </p>
+
+      <h2>Switching backends</h2>
+      <p>
+        The store resolves in a fixed order, and <code>OPENCONTEXT_DB_URL</code> always wins:
+      </p>
+      <pre><code>opencontext db status                                  # see what's active now
+opencontext db use "redis://localhost:6379"            # switch to Redis
+opencontext db use "mongodb://localhost:27017/opencontext"  # or switch to Mongo
+opencontext db migrate --to "&lt;new-connection-string&gt;"   # copy contexts and bubbles across</code></pre>
+      <p>
+        <code>db migrate</code> only ever reads the source store, so it can't damage the store you already
+        have — run it, verify the target looks right, then switch <code>OPENCONTEXT_DB_URL</code> over.
+        Each driver is an optional peer dependency, so install the one you need: <code>npm i redis</code>
+        for Redis and Redis-protocol services, or <code>npm i mongodb</code> for MongoDB and Atlas.
+      </p>
+
+      <div class="cta">
+        <p style="margin:0; color: var(--muted);">See every supported backend, including Redis and MongoDB, in the README.</p>
+        <a href="/">Get started with open-context →</a>
+      </div>
+
+      <h2>FAQ</h2>
+
+      <h3>Does open-context require Redis or MongoDB?</h3>
+      <p>No. The default store is a local JSON file at <code>~/.opencontext/contexts.json</code> and needs no setup at all. Redis and MongoDB are optional backends you point open-context at by setting <code>OPENCONTEXT_DB_URL</code>, useful once you already run one of them or need a shared store.</p>
+
+      <h3>Can I switch from the default JSON store to Redis or MongoDB without losing data?</h3>
+      <p>Yes. Run <code>opencontext db migrate --to "&lt;connection-string&gt;"</code> and it copies every context and bubble from your current store into the new one. It only reads the source store, so the existing data is never modified or deleted.</p>
+
+      <h3>Is search slower on Redis or MongoDB than on Postgres?</h3>
+      <p>On a large store, yes. Postgres pushes the search filter down into the database; Redis and MongoDB have no portable case-insensitive substring query, so open-context reads the whole contexts collection into memory and filters there. Results are identical across every backend, just not equally fast at scale.</p>
+
+      <h3>Does open-context support Valkey, Upstash, or Amazon ElastiCache?</h3>
+      <p>Yes. Any of them work through the same <code>redis://</code> or <code>rediss://</code> connection string, since they all speak the Redis wire protocol. open-context also accepts a <code>valkey://</code> alias and rewrites it automatically.</p>
+
+      <h3>What happens if a saved context is larger than MongoDB's 16MB document limit?</h3>
+      <p>The save fails, because MongoDB rejects any BSON document over 16 megabytes. Redis, the JSON file, and every SQL backend open-context supports have no equivalent per-entry size cap.</p>
+    </article>
+  </main>
+
+  <footer>
+    <span>open-context.dev — open source, self-hosted</span>
+    <div>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a href="https://hub.docker.com/r/adityakarnam/opencontext" target="_blank" rel="noopener noreferrer">Docker Hub</a>
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "redis-mongodb-mcp-store",
+      "title": "Redis or MongoDB for an MCP Context Store: How to Choose",
+      "publishedAt": "2026-09-11",
+      "topicTag": "redis-mongodb-mcp-store"
+    },
+    {
       "slug": "team-shared-mcp-context-store",
       "title": "Team-Shared MCP Context Store: Tradeoffs and Setup",
       "publishedAt": "2026-09-09",
@@ -110,6 +116,10 @@
     }
   ],
   "backlog": [
-    { "topicTag": "redis-mongodb-mcp-store", "workingTitle": "Redis or MongoDB for MCP Memory: Picking a Document Backend" }
+    { "topicTag": "firestore-dynamodb-mcp-store", "workingTitle": "Firestore or DynamoDB for a Serverless MCP Context Store" },
+    { "topicTag": "ollama-preference-analysis", "workingTitle": "How open-context Uses Ollama to Write Your Claude Preferences" },
+    { "topicTag": "export-claude-memory-to-chatgpt", "workingTitle": "Exporting Claude Preferences Back to ChatGPT and Gemini" },
+    { "topicTag": "d1-turso-edge-mcp-store", "workingTitle": "Cloudflare D1 or Turso: An MCP Context Store at the Edge" },
+    { "topicTag": "mcp-tools-reference", "workingTitle": "The 6 open-context MCP Tools, and When Claude Calls Each One" }
   ]
 }
