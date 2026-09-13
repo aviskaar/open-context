@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="/opencontext-logo.png" />
+  <title>Firestore or DynamoDB for a Serverless MCP Context Store</title>
+  <meta name="description" content="Firestore and DynamoDB both work as open-context's serverless MCP context store. Here's how each handles consistency, cost, and search, and how to choose." />
+  <link rel="canonical" href="https://open-context.dev/blog/firestore-dynamodb-mcp-store/" />
+  <meta property="og:title" content="Firestore or DynamoDB for a Serverless MCP Context Store" />
+  <meta property="og:description" content="Firestore and DynamoDB both work as open-context's serverless MCP context store. Here's how each handles consistency, cost, and search, and how to choose." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://open-context.dev/blog/firestore-dynamodb-mcp-store/" />
+  <meta property="og:image" content="https://open-context.dev/opencontext-logo.png" />
+  <meta property="article:published_time" content="2026-09-13" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Firestore or DynamoDB for a Serverless MCP Context Store" />
+  <meta name="twitter:description" content="How Firestore and DynamoDB differ as an MCP context store backend, and how to pick between them." />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BlogPosting",
+        "headline": "Firestore or DynamoDB for a Serverless MCP Context Store",
+        "description": "Firestore and DynamoDB both work as open-context's serverless MCP context store. Here's how each handles consistency, cost, and search, and how to choose.",
+        "datePublished": "2026-09-13",
+        "dateModified": "2026-09-13",
+        "mainEntityOfPage": { "@type": "WebPage", "@id": "https://open-context.dev/blog/firestore-dynamodb-mcp-store/" },
+        "image": "https://open-context.dev/opencontext-logo.png",
+        "author": { "@type": "Organization", "name": "open-context", "url": "https://open-context.dev/" },
+        "publisher": {
+          "@type": "Organization",
+          "name": "open-context",
+          "logo": { "@type": "ImageObject", "url": "https://open-context.dev/opencontext-logo.png" }
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Does open-context support both Firestore and DynamoDB for the MCP context store?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Both are two of 15 supported backends, wired up through OPENCONTEXT_DB_URL. Firestore needs the @google-cloud/firestore peer dependency; DynamoDB needs @aws-sdk/client-dynamodb and @aws-sdk/lib-dynamodb. Neither is installed until you actually pick that backend." }
+          },
+          {
+            "@type": "Question",
+            "name": "Why does DynamoDB cost more per read than Firestore for the same context store?",
+            "acceptedAnswer": { "@type": "Answer", "text": "It doesn't have to — the extra cost comes specifically from open-context forcing strongly consistent reads on DynamoDB, to guarantee getContext sees a context immediately after saveContext. AWS's own pricing model charges a strongly consistent read twice the capacity of an eventually consistent one. Firestore reads are strongly consistent by default, so this cost doesn't apply there." }
+          },
+          {
+            "@type": "Question",
+            "name": "Do I need to create a DynamoDB table or Firestore database before connecting?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No for either. open-context's DynamoDB driver creates a PAY_PER_REQUEST table automatically on first connect if one doesn't already exist, then waits for it to become active. Firestore collections and documents are created implicitly the first time a context is written, so nothing needs to be provisioned up front." }
+          },
+          {
+            "@type": "Question",
+            "name": "Which credentials does each backend need?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Firestore reads Google's Application Default Credentials chain, the same one every Google Cloud client library uses, so nothing sensitive goes in the connection string. DynamoDB uses the default AWS credential provider chain, or you can pass accessKeyId, secretAccessKey, and an optional sessionToken as parameters on the dynamodb:// connection string." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is search slower on Firestore or DynamoDB than on a SQL backend?",
+            "acceptedAnswer": { "@type": "Answer", "text": "For large stores, yes. Neither has a portable case-insensitive substring predicate, so open-context reads the whole context collection and filters in memory, the same approach used for Redis and MongoDB. Every backend passes the same conformance suite and returns identical results, but SQL backends like Postgres and SQLite push that filtering into the database instead, which is faster once you have a very large number of saved contexts." }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <style>
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Regular-Trial-BF63f6cbd970ee9.otf') format('opentype'); font-weight: 400; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Medium-Trial-BF63f6cbdb24b6d.otf') format('opentype'); font-weight: 500; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Bold-Trial-BF63f6cbda1877f.otf') format('opentype'); font-weight: 700; font-style: normal; }
+
+    :root {
+      --bg: #000000;
+      --card: #0a0a0a;
+      --border: #262626;
+      --fg: #fafafa;
+      --muted: #a1a1aa;
+      --accent: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Styrene A', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.7;
+    }
+    a { color: inherit; }
+    header {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; gap: 1.5rem;
+      padding: 0.9rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.9);
+      backdrop-filter: blur(6px);
+    }
+    header .brand { display: flex; align-items: center; gap: 0.5rem; margin-right: auto; text-decoration: none; }
+    header .brand img { width: 32px; height: 32px; border-radius: 3px; }
+    header .brand span { font-size: 0.9rem; font-weight: 600; letter-spacing: -0.01em; }
+    header nav { display: flex; align-items: center; gap: 1.5rem; font-size: 0.875rem; color: var(--muted); }
+    header nav a { text-decoration: none; }
+    header nav a:hover, header nav a.active { color: var(--fg); }
+
+    main { max-width: 720px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+    .meta { font-size: 0.8rem; color: var(--muted); font-family: monospace; margin-bottom: 0.75rem; }
+    h1 { font-size: 2.1rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; margin: 0 0 1.5rem; }
+    h2 { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.01em; margin: 2.5rem 0 1rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin: 1.75rem 0 0.6rem; }
+    p { color: #e4e4e7; margin: 0 0 1.1rem; }
+    p.lead { font-size: 1.1rem; color: var(--fg); }
+    ul, ol { color: #e4e4e7; padding-left: 1.3rem; margin: 0 0 1.1rem; }
+    li { margin-bottom: 0.4rem; }
+    code { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85em; }
+    pre { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto; font-size: 0.85rem; }
+    pre code { border: none; padding: 0; background: none; }
+    a.inline-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+    .takeaways {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin: 1.5rem 0 2.5rem;
+    }
+    .takeaways p.label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.7rem; color: var(--accent); font-weight: 600; margin: 0 0 0.75rem; }
+    .takeaways ul { margin: 0; }
+    .table-wrap { overflow-x: auto; margin: 0 0 1.1rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
+    th { color: var(--muted); font-weight: 600; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+    .cta {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin: 2.5rem 0;
+      text-align: center;
+    }
+    .cta a {
+      display: inline-block;
+      margin-top: 0.75rem;
+      background: var(--fg);
+      color: #000;
+      font-weight: 600;
+      padding: 0.55rem 1.25rem;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 0.75rem;
+      font-size: 0.75rem; color: var(--muted);
+    }
+    footer a { text-decoration: none; margin-left: 1rem; }
+    footer a:hover { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">
+      <img src="/opencontext-logo.png" alt="open-context" />
+      <span>open-context</span>
+    </a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/blog/" class="active">Blog</a>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <div class="meta">September 13, 2026 · 7 min read</div>
+      <h1>Firestore or DynamoDB for a Serverless MCP Context Store</h1>
+
+      <p class="lead">
+        For a serverless MCP context store, pick Firestore if you're already on Google Cloud and want
+        documents to just work with no consistency workaround required; pick DynamoDB if you're on AWS
+        or want single-digit-millisecond reads at any scale, and accept that guaranteeing
+        read-your-writes there costs twice the read capacity of a default read. Both are two of
+        <a class="inline-link" href="/">open-context</a>'s 15 supported context-store backends, both
+        need zero servers to run or capacity to size, and both go through the same shared interface —
+        so <code>save_context</code>, <code>recall_context</code>, and the rest of the MCP tools behave
+        identically no matter which one is active.
+      </p>
+
+      <div class="takeaways">
+        <p class="label">Key takeaways</p>
+        <ul>
+          <li>Firestore and DynamoDB are two of open-context's 15 supported backends, and both are genuinely serverless: no database process to run, no capacity to pre-provision.</li>
+          <li>Both connect through the same <code>DocumentDriver</code> interface — six methods (<code>connect</code>, <code>close</code>, <code>ping</code>, <code>get</code>, <code>put</code>, <code>remove</code>, <code>list</code>) — which is why the CLI, web UI, and MCP tools work identically once either is wired up.</li>
+          <li>DynamoDB is eventually consistent by default, so open-context's driver forces <code>ConsistentRead: true</code> on every read to guarantee <code>getContext</code> sees data immediately after <code>saveContext</code> — and AWS bills a strongly consistent read at twice the capacity of an eventually consistent one.</li>
+          <li>Firestore reads are strongly consistent by default, so open-context's Firestore driver needs no equivalent workaround or extra cost.</li>
+          <li>Neither backend has a portable case-insensitive substring predicate, so <code>recall_context</code> and <code>search_contexts</code> filter in memory after reading the whole collection — the same tradeoff Redis and MongoDB make, and one a SQL backend avoids at scale.</li>
+        </ul>
+      </div>
+
+      <h2>Two different shapes of "serverless"</h2>
+      <p>
+        "Serverless" means something slightly different on each cloud, and that difference shows up the
+        moment you connect. Firestore is Google Cloud's managed document database: there's no table, no
+        partition key, no billing mode to pick — you point a client at a project ID and start writing
+        documents. DynamoDB is AWS's managed key-value and document store, and its serverless mode is
+        on-demand capacity: pay-per-request pricing with no throughput to provision up front, so you
+        don't estimate a workload's peak load ahead of time
+        (<a class="inline-link" href="https://aws.amazon.com/dynamodb/pricing/on-demand/" target="_blank" rel="noopener noreferrer">Amazon DynamoDB: On-Demand pricing</a>).
+        Both remove the operational surface a self-managed Postgres or Redis instance would need —
+        no patching, no failover to configure — but DynamoDB still has a concept of a table you connect
+        to, where Firestore's collections exist only once something is written into them.
+      </p>
+
+      <h2>How open-context actually talks to each one</h2>
+      <p>
+        Both drivers implement the same six-method <code>DocumentDriver</code> interface that also backs
+        MongoDB, Redis, and an in-memory adapter used in tests. Everything else — search, tag filtering,
+        ordering, cascading a bubble delete across its contexts — is written once in the shared document
+        adapter, so adding either backend meant writing a driver, not reimplementing the storage contract.
+      </p>
+      <p>
+        The Firestore driver stores contexts and bubbles in two collections, <code>oc_contexts</code> and
+        <code>oc_bubbles</code>, and authenticates through Google's Application Default Credentials chain
+        rather than a secret embedded in the connection string. The DynamoDB driver puts both collections
+        in one table, split by a partition key (<code>CONTEXT</code> or <code>BUBBLE</code>) so listing
+        either collection is a targeted <code>Query</code> against one partition instead of a full-table
+        scan — and on first connect, if that table doesn't exist yet, it creates one in
+        <code>PAY_PER_REQUEST</code> billing mode and waits for it to report <code>ACTIVE</code> before
+        continuing.
+      </p>
+
+      <h2>The consistency difference that actually costs you</h2>
+      <p>
+        This is the one place the two backends genuinely diverge, and it's a correctness issue before
+        it's a cost issue. DynamoDB reads are eventually consistent by default — a read shortly after a
+        write can come back stale or empty. That would break open-context's read-your-writes guarantee,
+        the same one every backend in the conformance suite has to satisfy: call <code>getContext</code>
+        right after <code>saveContext</code>, and it must see the write. So the DynamoDB driver passes
+        <code>ConsistentRead: true</code> on every <code>GetCommand</code> and <code>QueryCommand</code>.
+        The tradeoff is billing: AWS's own on-demand pricing model charges a strongly consistent read
+        one full read request unit per 4 KB, versus half that for an eventually consistent read of the
+        same item — strongly consistent reads cost twice as much, full stop
+        (<a class="inline-link" href="https://aws.amazon.com/dynamodb/pricing/on-demand/" target="_blank" rel="noopener noreferrer">Amazon DynamoDB: On-Demand pricing</a>).
+      </p>
+      <p>
+        Firestore doesn't need any of this. Google Cloud's own documentation on how Firestore behaves at
+        scale confirms that Firestore reads are strongly consistent by default — a read returns the
+        latest committed data with no opt-in flag and no capacity penalty for asking
+        (<a class="inline-link" href="https://cloud.google.com/firestore/native/docs/real-time_queries_at_scale" target="_blank" rel="noopener noreferrer">Google Cloud: Understand real-time queries at scale</a>).
+        That's one less thing the Firestore driver has to work around, and one less line item to think
+        about as read volume grows.
+      </p>
+
+      <h2>Setting each one up</h2>
+      <p>Firestore needs only a project ID — the database segment defaults to <code>(default)</code>:</p>
+      <pre><code>export OPENCONTEXT_DB_URL="firestore://my-gcp-project"
+npm i @google-cloud/firestore</code></pre>
+      <p>
+        DynamoDB's connection string carries a region and a table name instead — open-context also
+        accepts <code>ddb://</code> as a shorthand alias for the same scheme:
+      </p>
+      <pre><code>export OPENCONTEXT_DB_URL="dynamodb://us-east-1/opencontext"
+npm i @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb</code></pre>
+      <p>
+        Both drivers are optional peer dependencies — like every one of open-context's 15 backends —
+        so nothing gets installed until you actually pick that scheme. DynamoDB falls back to the default
+        AWS credential provider chain, but if you need to point at a specific role or a local
+        DynamoDB-compatible endpoint for testing, the connection string accepts <code>endpoint</code>,
+        <code>accessKeyId</code>, <code>secretAccessKey</code>, and <code>sessionToken</code> as query
+        parameters.
+      </p>
+
+      <h2>What's identical no matter which you pick</h2>
+      <p>
+        The reason this choice is low-stakes is the same reason covered in
+        <a class="inline-link" href="/blog/sqlite-vs-postgres-mcp-store/">choosing between SQLite and Postgres</a>:
+        every backend, Firestore and DynamoDB included, is validated against the same roughly 50-test
+        conformance suite. Ordering is <code>createdAt</code> ascending then <code>id</code> ascending on
+        every list method, identically, on every backend. An unset <code>bubbleId</code> or
+        <code>description</code> comes back <code>undefined</code>, never <code>null</code> — DynamoDB
+        needs <code>removeUndefinedValues: true</code> configured explicitly on its marshaller to honor
+        that, which is exactly the kind of backend-specific detail the shared driver interface exists to
+        absorb.
+      </p>
+      <p>
+        Search is the one place both backends pay the same real cost, the tradeoff also covered in
+        <a class="inline-link" href="/blog/redis-mongodb-mcp-store/">Redis vs. MongoDB for an MCP store</a>:
+        neither has a portable case-insensitive substring predicate, so <code>recall_context</code> and
+        <code>search_contexts</code> read the entire context collection and filter it in memory. Results
+        come back identical to a SQL backend — the conformance suite makes sure of that — but on a very
+        large store, a SQL backend that pushes the filter into the database will simply be faster at it.
+      </p>
+
+      <h2>Which one to choose</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th></th><th>Firestore</th><th>DynamoDB</th></tr></thead>
+          <tbody>
+            <tr><td>Cloud</td><td>Google Cloud</td><td>AWS</td></tr>
+            <tr><td>Credentials</td><td>Application Default Credentials chain</td><td>Default AWS credential chain, or DSN params</td></tr>
+            <tr><td>Setup before first write</td><td>None — collections are created implicitly</td><td>None — a <code>PAY_PER_REQUEST</code> table is created automatically</td></tr>
+            <tr><td>Read consistency</td><td>Strongly consistent by default</td><td>Eventually consistent by default; open-context forces strong reads</td></tr>
+            <tr><td>Cost of read-your-writes</td><td>None — it's the default</td><td>2x the read capacity of an eventually consistent read</td></tr>
+            <tr><td>Connection string</td><td><code>firestore://my-project</code></td><td><code>dynamodb://us-east-1/opencontext</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        If you're already running other infrastructure on one of these clouds, that's usually the
+        deciding factor — one fewer credential chain and IAM policy to manage. Absent that, Firestore's
+        default strong consistency makes it the simpler mental model for a context store that a single
+        MCP client reads right after it writes, which is the exact pattern <code>save_context</code>
+        followed by <code>recall_context</code> produces on every save.
+      </p>
+
+      <div class="cta">
+        <p style="margin:0; color: var(--muted);">Point your MCP context store at Firestore or DynamoDB in one environment variable.</p>
+        <a href="/">Get started with open-context →</a>
+      </div>
+
+      <h2>FAQ</h2>
+
+      <h3>Does open-context support both Firestore and DynamoDB for the MCP context store?</h3>
+      <p>Yes. Both are two of 15 supported backends, wired up through <code>OPENCONTEXT_DB_URL</code>. Firestore needs the <code>@google-cloud/firestore</code> peer dependency; DynamoDB needs <code>@aws-sdk/client-dynamodb</code> and <code>@aws-sdk/lib-dynamodb</code>. Neither is installed until you actually pick that backend.</p>
+
+      <h3>Why does DynamoDB cost more per read than Firestore for the same context store?</h3>
+      <p>It doesn't have to — the extra cost comes specifically from open-context forcing strongly consistent reads on DynamoDB, to guarantee <code>getContext</code> sees a context immediately after <code>saveContext</code>. AWS's own pricing model charges a strongly consistent read twice the capacity of an eventually consistent one. Firestore reads are strongly consistent by default, so this cost doesn't apply there.</p>
+
+      <h3>Do I need to create a DynamoDB table or Firestore database before connecting?</h3>
+      <p>No for either. open-context's DynamoDB driver creates a <code>PAY_PER_REQUEST</code> table automatically on first connect if one doesn't already exist, then waits for it to become active. Firestore collections and documents are created implicitly the first time a context is written, so nothing needs to be provisioned up front.</p>
+
+      <h3>Which credentials does each backend need?</h3>
+      <p>Firestore reads Google's Application Default Credentials chain, the same one every Google Cloud client library uses, so nothing sensitive goes in the connection string. DynamoDB uses the default AWS credential provider chain, or you can pass <code>accessKeyId</code>, <code>secretAccessKey</code>, and an optional <code>sessionToken</code> as parameters on the <code>dynamodb://</code> connection string.</p>
+
+      <h3>Is search slower on Firestore or DynamoDB than on a SQL backend?</h3>
+      <p>For large stores, yes. Neither has a portable case-insensitive substring predicate, so open-context reads the whole context collection and filters in memory, the same approach used for Redis and MongoDB. Every backend passes the same conformance suite and returns identical results, but SQL backends like Postgres and SQLite push that filtering into the database instead, which is faster once you have a very large number of saved contexts.</p>
+    </article>
+  </main>
+
+  <footer>
+    <span>open-context.dev — open source, self-hosted</span>
+    <div>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a href="https://hub.docker.com/r/adityakarnam/opencontext" target="_blank" rel="noopener noreferrer">Docker Hub</a>
+    </div>
+  </footer>
+</body>
+</html>
