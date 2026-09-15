@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "ollama-preference-analysis",
+      "title": "How open-context Uses Ollama to Analyze Your Chat History",
+      "publishedAt": "2026-09-15",
+      "topicTag": "ollama-preference-analysis"
+    },
+    {
       "slug": "firestore-dynamodb-mcp-store",
       "title": "Firestore or DynamoDB for a Serverless MCP Context Store",
       "publishedAt": "2026-09-13",
@@ -122,7 +128,6 @@
     }
   ],
   "backlog": [
-    { "topicTag": "ollama-preference-analysis", "workingTitle": "How open-context Uses Ollama to Write Your Claude Preferences" },
     { "topicTag": "export-claude-memory-to-chatgpt", "workingTitle": "Exporting Claude Preferences Back to ChatGPT and Gemini" },
     { "topicTag": "d1-turso-edge-mcp-store", "workingTitle": "Cloudflare D1 or Turso: An MCP Context Store at the Edge" },
     { "topicTag": "mcp-tools-reference", "workingTitle": "The 6 open-context MCP Tools, and When Claude Calls Each One" }

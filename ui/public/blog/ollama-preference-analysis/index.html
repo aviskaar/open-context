@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="/opencontext-logo.png" />
+  <title>How open-context Uses Ollama to Analyze Your Chat History</title>
+  <meta name="description" content="open-context uses a local Ollama model to turn your exported chat history into Claude-ready preferences and memory files, entirely on your own machine." />
+  <link rel="canonical" href="https://open-context.dev/blog/ollama-preference-analysis/" />
+  <meta property="og:title" content="How open-context Uses Ollama to Analyze Your Chat History" />
+  <meta property="og:description" content="open-context uses a local Ollama model to turn your exported chat history into Claude-ready preferences and memory files, entirely on your own machine." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://open-context.dev/blog/ollama-preference-analysis/" />
+  <meta property="og:image" content="https://open-context.dev/opencontext-logo.png" />
+  <meta property="article:published_time" content="2026-09-15" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="How open-context Uses Ollama to Analyze Your Chat History" />
+  <meta name="twitter:description" content="How a local Ollama model turns your exported chat history into Claude-ready preferences and memory files, with no cloud API involved." />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BlogPosting",
+        "headline": "How open-context Uses Ollama to Analyze Your Chat History",
+        "description": "open-context uses a local Ollama model to turn your exported chat history into Claude-ready preferences and memory files, entirely on your own machine.",
+        "datePublished": "2026-09-15",
+        "dateModified": "2026-09-15",
+        "mainEntityOfPage": { "@type": "WebPage", "@id": "https://open-context.dev/blog/ollama-preference-analysis/" },
+        "image": "https://open-context.dev/opencontext-logo.png",
+        "author": { "@type": "Organization", "name": "open-context", "url": "https://open-context.dev/" },
+        "publisher": {
+          "@type": "Organization",
+          "name": "open-context",
+          "logo": { "@type": "ImageObject", "url": "https://open-context.dev/opencontext-logo.png" }
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Does open-context send my conversations to OpenAI or Anthropic for analysis?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. open-context only sends conversation text to a locally running Ollama server, which you control. It never makes a call to OpenAI's, Anthropic's, or any other vendor's API during analysis." }
+          },
+          {
+            "@type": "Question",
+            "name": "What Ollama model does open-context use by default?",
+            "acceptedAnswer": { "@type": "Answer", "text": "gpt-oss:20b, OpenAI's own open-weight model released under the Apache 2.0 license. It's sized to run on machines with around 16 GB of memory, and you can swap in a different model with the --model flag." }
+          },
+          {
+            "@type": "Question",
+            "name": "What happens if I don't have Ollama installed?",
+            "acceptedAnswer": { "@type": "Answer", "text": "open-context falls back to a statistics-based analysis with no model call at all: conversation counts, date ranges, and topic keywords pulled from your conversation titles, formatted into the same preferences.md and memory.md files." }
+          },
+          {
+            "@type": "Question",
+            "name": "How much of my conversation history actually gets analyzed?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Conversations are sorted chronologically and added to the analysis prompt until it hits roughly 100,000 tokens (about 400,000 characters). If your export is larger than that, the oldest conversations that still fit are kept and the rest are truncated, with a warning logged to the console." }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I use a bigger or different model for better results?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. The --model flag accepts any model you've pulled into Ollama — qwen2.5:32b and llama3:70b for higher quality at the cost of speed, or llama3:8b for faster, lighter-weight runs." }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <style>
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Regular-Trial-BF63f6cbd970ee9.otf') format('opentype'); font-weight: 400; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Medium-Trial-BF63f6cbdb24b6d.otf') format('opentype'); font-weight: 500; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Bold-Trial-BF63f6cbda1877f.otf') format('opentype'); font-weight: 700; font-style: normal; }
+
+    :root {
+      --bg: #000000;
+      --card: #0a0a0a;
+      --border: #262626;
+      --fg: #fafafa;
+      --muted: #a1a1aa;
+      --accent: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Styrene A', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.7;
+    }
+    a { color: inherit; }
+    header {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; gap: 1.5rem;
+      padding: 0.9rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.9);
+      backdrop-filter: blur(6px);
+    }
+    header .brand { display: flex; align-items: center; gap: 0.5rem; margin-right: auto; text-decoration: none; }
+    header .brand img { width: 32px; height: 32px; border-radius: 3px; }
+    header .brand span { font-size: 0.9rem; font-weight: 600; letter-spacing: -0.01em; }
+    header nav { display: flex; align-items: center; gap: 1.5rem; font-size: 0.875rem; color: var(--muted); }
+    header nav a { text-decoration: none; }
+    header nav a:hover, header nav a.active { color: var(--fg); }
+
+    main { max-width: 720px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+    .meta { font-size: 0.8rem; color: var(--muted); font-family: monospace; margin-bottom: 0.75rem; }
+    h1 { font-size: 2.1rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; margin: 0 0 1.5rem; }
+    h2 { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.01em; margin: 2.5rem 0 1rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin: 1.75rem 0 0.6rem; }
+    p { color: #e4e4e7; margin: 0 0 1.1rem; }
+    p.lead { font-size: 1.1rem; color: var(--fg); }
+    ul, ol { color: #e4e4e7; padding-left: 1.3rem; margin: 0 0 1.1rem; }
+    li { margin-bottom: 0.4rem; }
+    code { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85em; }
+    pre { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto; font-size: 0.85rem; }
+    pre code { border: none; padding: 0; background: none; }
+    a.inline-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+    .takeaways {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin: 1.5rem 0 2.5rem;
+    }
+    .takeaways p.label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.7rem; color: var(--accent); font-weight: 600; margin: 0 0 0.75rem; }
+    .takeaways ul { margin: 0; }
+    .table-wrap { overflow-x: auto; margin: 0 0 1.1rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
+    th { color: var(--muted); font-weight: 600; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+    .cta {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin: 2.5rem 0;
+      text-align: center;
+    }
+    .cta a {
+      display: inline-block;
+      margin-top: 0.75rem;
+      background: var(--fg);
+      color: #000;
+      font-weight: 600;
+      padding: 0.55rem 1.25rem;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 0.75rem;
+      font-size: 0.75rem; color: var(--muted);
+    }
+    footer a { text-decoration: none; margin-left: 1rem; }
+    footer a:hover { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">
+      <img src="/opencontext-logo.png" alt="open-context" />
+      <span>open-context</span>
+    </a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/blog/" class="active">Blog</a>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <div class="meta">September 15, 2026 · 6 min read</div>
+      <h1>How open-context Uses Ollama to Analyze Your Chat History</h1>
+
+      <p class="lead">
+        open-context uses a local <a class="inline-link" href="https://ollama.ai/" target="_blank" rel="noopener noreferrer">Ollama</a>
+        model — <code>gpt-oss:20b</code> by default — to read your exported chat history and write two
+        Claude-ready documents: a <code>preferences.md</code> file describing how you like to communicate,
+        and a <code>memory.md</code> file describing who you are and what you're working on. The analysis
+        runs entirely on your own machine; the only network call it makes is to the Ollama instance you're
+        already running, and skipping AI analysis with <code>--skip-preferences</code> produces a lighter,
+        rule-based version of both files with no model involved at all.
+      </p>
+
+      <div class="takeaways">
+        <p class="label">Key takeaways</p>
+        <ul>
+          <li>open-context's <code>OllamaPreferenceAnalyzer</code> sends your exported conversations to a local Ollama server — never to a cloud API.</li>
+          <li>It runs two separate prompts against the same history: one writes first-person communication preferences, the other writes third-person factual memory.</li>
+          <li>The default model is <code>gpt-oss:20b</code>, OpenAI's own open-weight model, small enough to run on machines with around 16 GB of memory.</li>
+          <li>Conversations are sorted chronologically and capped at roughly 100,000 tokens (about 400,000 characters) before being sent to the model, so very large exports get truncated rather than failing.</li>
+          <li>No Ollama running? <code>--skip-preferences</code> produces a statistics-based fallback — topic keywords, message counts, date ranges — with no model call at all.</li>
+        </ul>
+      </div>
+
+      <h2>Two documents, two different prompts</h2>
+      <p>
+        When you run <a class="inline-link" href="/">open-context</a> against a ChatGPT export with AI
+        analysis enabled, it doesn't ask one model call to do everything. The
+        <code>OllamaPreferenceAnalyzer</code> class in <code>src/analyzers/ollama-preferences.ts</code> makes
+        two separate requests against the same conversation history, because the two outputs need to read
+        completely differently.
+      </p>
+      <p>
+        <code>preferences.md</code> is written in first person — "I prefer clear, direct explanations..." —
+        because it's meant to be pasted directly into Claude's Settings → Preferences field, where Claude
+        reads it as your own voice describing how you want to be talked to. <code>memory.md</code> is written
+        in third person, split into three fixed sections (Work context, Personal context, Top of mind),
+        because it's meant for Claude's Memory feature, which expects factual statements about you rather
+        than direct instructions.
+      </p>
+
+      <h2>How the analysis pipeline actually works</h2>
+      <p>Under the hood, both prompts go through the same four-step pipeline:</p>
+      <ol>
+        <li><strong>Check Ollama is reachable.</strong> <code>checkOllamaAvailable()</code> calls <code>ollama.list()</code> to confirm the server is running and the requested model has already been pulled. A connection refusal surfaces as "Ollama is not running. Start it with: <code>ollama serve</code>"; a missing model surfaces as "Run: <code>ollama pull &lt;model&gt;</code>".</li>
+        <li><strong>Sort and format conversations.</strong> Conversations are sorted oldest-first by creation date, then each one is formatted as a block with its title, date, and every message labeled by role (<code>USER:</code>, <code>ASSISTANT:</code>).</li>
+        <li><strong>Truncate to fit the context window.</strong> Formatted conversations are appended to a running total until it would exceed roughly 100,000 tokens (approximated as 400,000 characters). Once the limit is hit, the loop stops and logs a warning naming how many conversations made it in.</li>
+        <li><strong>Generate.</strong> The assembled text is dropped into either the preferences prompt or the memory prompt and sent to <code>ollama.generate()</code> with <code>stream: false</code>, so the CLI waits for one complete response rather than streaming tokens.</li>
+      </ol>
+
+      <h2>Why the default model is gpt-oss:20b</h2>
+      <p>
+        open-context defaults to <code>gpt-oss:20b</code>, one of two open-weight models
+        <a class="inline-link" href="https://openai.com/index/introducing-gpt-oss/" target="_blank" rel="noopener noreferrer">OpenAI released under the Apache 2.0 license</a>
+        alongside the larger <code>gpt-oss:120b</code>. The 20B version is specifically sized for local
+        and edge use — it can run on hardware with around 16 GB of memory — which makes it a reasonable
+        default for a tool meant to run on a laptop rather than a GPU server. You aren't locked into it,
+        though; the <code>--model</code> flag accepts anything you've already pulled into Ollama.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Model</th><th>Size</th><th>Speed</th><th>Best for</th></tr></thead>
+          <tbody>
+            <tr><td><code>gpt-oss:20b</code></td><td>13GB</td><td>Medium</td><td>Best overall results (default)</td></tr>
+            <tr><td><code>qwen2.5:32b</code></td><td>20GB</td><td>Medium</td><td>Technical content</td></tr>
+            <tr><td><code>llama3:70b</code></td><td>40GB</td><td>Slow</td><td>Maximum accuracy</td></tr>
+            <tr><td><code>llama3:8b</code></td><td>5GB</td><td>Fast</td><td>Quick conversions</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>What happens without Ollama</h2>
+      <p>
+        AI analysis is opt-in, not required. Pass <code>--skip-preferences</code>, or simply don't have
+        Ollama running, and open-context falls back to <code>generateBasicPreferences()</code> and
+        <code>generateBasicMemory()</code> — pure statistics, no model call. These functions count your
+        conversations and messages, compute the date range your export covers, and pull frequent words out
+        of conversation titles as a rough topic list, then drop all of that into the same
+        <code>preferences.md</code>/<code>memory.md</code> shape the AI path produces. It's less specific
+        than what a model writes, but it's instant and it never touches a network at all — useful if you
+        just want the raw conversation markdown quickly and plan to refine preferences by hand.
+      </p>
+
+      <h2>Pointing it at your own Ollama setup</h2>
+      <p>
+        Two flags control where and what model the analysis runs against:
+      </p>
+      <pre><code>npm start -- convert export.zip --model qwen2.5:32b
+npm start -- convert export.zip --ollama-host http://192.168.1.100:11434</code></pre>
+      <p>
+        <code>--ollama-host</code> matters most if Ollama runs on a different machine — a desktop with a
+        GPU, say, while you run open-context from a laptop. The Docker image handles the common case of
+        "Ollama on your host, open-context in a container" automatically, reaching it at
+        <code>host.docker.internal:11434</code> without any extra configuration. If you've already gone
+        through the <a class="inline-link" href="/blog/migrate-chatgpt-to-claude/">ChatGPT export and conversion steps</a>,
+        these two flags are the only difference between the default run and a customized one.
+      </p>
+
+      <h2>Privacy: the one network call that matters</h2>
+      <p>
+        The reason open-context routes through Ollama instead of a hosted API is straightforward: your
+        chat history is some of the most personal data you generate, and running the model locally means
+        it never leaves your machine. This isn't unique to open-context — it's the whole reason
+        <a class="inline-link" href="https://ollama.ai/" target="_blank" rel="noopener noreferrer">Ollama</a>
+        exists as a category. Because inference runs entirely on your own hardware, your prompts stay on
+        the device instead of sitting in a cloud provider's logs, which is also why self-hosted LLMs have
+        become a common recommendation for privacy- and compliance-sensitive work. For open-context
+        specifically, that means the CLI, the web UI, and the MCP server share one rule: no conversation
+        content leaves your machine unless you've pointed <code>--ollama-host</code> at infrastructure you
+        control.
+      </p>
+
+      <div class="cta">
+        <p style="margin:0; color: var(--muted);">See what preferences.md and memory.md look like for your own history.</p>
+        <a href="/">Get started with open-context →</a>
+      </div>
+
+      <h2>FAQ</h2>
+
+      <h3>Does open-context send my conversations to OpenAI or Anthropic for analysis?</h3>
+      <p>No. open-context only sends conversation text to a locally running Ollama server, which you control. It never makes a call to OpenAI's, Anthropic's, or any other vendor's API during analysis.</p>
+
+      <h3>What Ollama model does open-context use by default?</h3>
+      <p><code>gpt-oss:20b</code>, OpenAI's own open-weight model released under the Apache 2.0 license. It's sized to run on machines with around 16 GB of memory, and you can swap in a different model with the <code>--model</code> flag.</p>
+
+      <h3>What happens if I don't have Ollama installed?</h3>
+      <p>open-context falls back to a statistics-based analysis with no model call at all: conversation counts, date ranges, and topic keywords pulled from your conversation titles, formatted into the same <code>preferences.md</code> and <code>memory.md</code> files.</p>
+
+      <h3>How much of my conversation history actually gets analyzed?</h3>
+      <p>Conversations are sorted chronologically and added to the analysis prompt until it hits roughly 100,000 tokens (about 400,000 characters). If your export is larger than that, the oldest conversations that still fit are kept and the rest are truncated, with a warning logged to the console.</p>
+
+      <h3>Can I use a bigger or different model for better results?</h3>
+      <p>Yes. The <code>--model</code> flag accepts any model you've pulled into Ollama — <code>qwen2.5:32b</code> and <code>llama3:70b</code> for higher quality at the cost of speed, or <code>llama3:8b</code> for faster, lighter-weight runs.</p>
+    </article>
+  </main>
+
+  <footer>
+    <span>open-context.dev — open source, self-hosted</span>
+    <div>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a href="https://hub.docker.com/r/adityakarnam/opencontext" target="_blank" rel="noopener noreferrer">Docker Hub</a>
+    </div>
+  </footer>
+</body>
+</html>
