@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "d1-turso-edge-mcp-store",
+      "title": "Cloudflare D1 vs. Turso: Your Edge MCP Context Store",
+      "publishedAt": "2026-09-19",
+      "topicTag": "d1-turso-edge-mcp-store"
+    },
+    {
       "slug": "export-claude-preferences-chatgpt-gemini",
       "title": "Exporting Your Claude Preferences to ChatGPT and Gemini",
       "publishedAt": "2026-09-17",
@@ -134,7 +140,6 @@
     }
   ],
   "backlog": [
-    { "topicTag": "d1-turso-edge-mcp-store", "workingTitle": "Cloudflare D1 or Turso: An MCP Context Store at the Edge" },
     { "topicTag": "mcp-tools-reference", "workingTitle": "The 6 open-context MCP Tools, and When Claude Calls Each One" }
   ]
 }
