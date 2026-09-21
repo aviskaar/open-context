@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "mcp-tools-reference",
+      "title": "The 6 open-context MCP Tools, and When Claude Calls Each One",
+      "publishedAt": "2026-09-21",
+      "topicTag": "mcp-tools-reference"
+    },
+    {
       "slug": "d1-turso-edge-mcp-store",
       "title": "Cloudflare D1 vs. Turso: Your Edge MCP Context Store",
       "publishedAt": "2026-09-19",
@@ -139,7 +145,5 @@
       "topicTag": "bubbles-project-workspaces"
     }
   ],
-  "backlog": [
-    { "topicTag": "mcp-tools-reference", "workingTitle": "The 6 open-context MCP Tools, and When Claude Calls Each One" }
-  ]
+  "backlog": []
 }
