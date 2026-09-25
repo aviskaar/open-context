@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="/opencontext-logo.png" />
+  <title>DuckDB and SurrealDB: Two Unconventional MCP Backends</title>
+  <meta name="description" content="DuckDB embeds a columnar engine; SurrealDB is a remote multi-model database. Both back open-context's MCP store — how each fits, and how to connect either one." />
+  <link rel="canonical" href="https://open-context.dev/blog/duckdb-surrealdb-mcp-store/" />
+  <meta property="og:title" content="DuckDB and SurrealDB: Two Unconventional MCP Backends" />
+  <meta property="og:description" content="DuckDB embeds a columnar engine; SurrealDB is a remote multi-model database. Both back open-context's MCP store — how each fits, and how to connect either one." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://open-context.dev/blog/duckdb-surrealdb-mcp-store/" />
+  <meta property="og:image" content="https://open-context.dev/opencontext-logo.png" />
+  <meta property="article:published_time" content="2026-09-25" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="DuckDB and SurrealDB: Two Unconventional MCP Backends" />
+  <meta name="twitter:description" content="One is embedded and columnar, one is remote and multi-model. Here's how DuckDB and SurrealDB fit as an open-context MCP context store, and how to connect either." />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BlogPosting",
+        "headline": "DuckDB and SurrealDB: Two Unconventional MCP Backends",
+        "description": "DuckDB embeds a columnar engine; SurrealDB is a remote multi-model database. Both back open-context's MCP store — how each fits, and how to connect either one.",
+        "datePublished": "2026-09-25",
+        "dateModified": "2026-09-25",
+        "mainEntityOfPage": { "@type": "WebPage", "@id": "https://open-context.dev/blog/duckdb-surrealdb-mcp-store/" },
+        "image": "https://open-context.dev/opencontext-logo.png",
+        "author": { "@type": "Organization", "name": "open-context", "url": "https://open-context.dev/" },
+        "publisher": {
+          "@type": "Organization",
+          "name": "open-context",
+          "logo": { "@type": "ImageObject", "url": "https://open-context.dev/opencontext-logo.png" }
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Does open-context support DuckDB and SurrealDB for the MCP context store?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. DuckDB is a built-in sql-family backend and SurrealDB has its own bespoke adapter. Point OPENCONTEXT_DB_URL at a duckdb:// path for DuckDB or a surrealdb:// connection string for SurrealDB, and the CLI, web UI, and MCP tools behave identically to every other backend." }
+          },
+          {
+            "@type": "Question",
+            "name": "Do I need to install anything to use DuckDB with open-context?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes, one optional peer dependency: npm i @duckdb/node-api. DuckDB itself is embedded — there's no separate server to run, only that one npm package to add once you point OPENCONTEXT_DB_URL at a duckdb:// path." }
+          },
+          {
+            "@type": "Question",
+            "name": "What do I need to install to use SurrealDB?",
+            "acceptedAnswer": { "@type": "Answer", "text": "The surrealdb peer dependency: npm i surrealdb. Unlike DuckDB, SurrealDB itself is a separate server process (or embedded engine) you run and connect to over the network, not a library that runs inside open-context." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does DuckDB require a server, or does it run embedded like SQLite?",
+            "acceptedAnswer": { "@type": "Answer", "text": "DuckDB runs embedded, the same way open-context's SQLite backend does. A duckdb:// connection string just points at a local file path, and open-context's driver opens it in-process — there's no daemon to start or port to open." }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I switch from DuckDB or SurrealDB to another backend without losing my saved contexts?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Run opencontext db migrate --to \"<new-connection-string>\" and every context and bubble is copied across. The migration only ever reads from your current store, so a failed run partway through leaves your original data untouched." }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <style>
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Regular-Trial-BF63f6cbd970ee9.otf') format('opentype'); font-weight: 400; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Medium-Trial-BF63f6cbdb24b6d.otf') format('opentype'); font-weight: 500; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Bold-Trial-BF63f6cbda1877f.otf') format('opentype'); font-weight: 700; font-style: normal; }
+
+    :root {
+      --bg: #000000;
+      --card: #0a0a0a;
+      --border: #262626;
+      --fg: #fafafa;
+      --muted: #a1a1aa;
+      --accent: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Styrene A', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.7;
+    }
+    a { color: inherit; }
+    header {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; gap: 1.5rem;
+      padding: 0.9rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.9);
+      backdrop-filter: blur(6px);
+    }
+    header .brand { display: flex; align-items: center; gap: 0.5rem; margin-right: auto; text-decoration: none; }
+    header .brand img { width: 32px; height: 32px; border-radius: 3px; }
+    header .brand span { font-size: 0.9rem; font-weight: 600; letter-spacing: -0.01em; }
+    header nav { display: flex; align-items: center; gap: 1.5rem; font-size: 0.875rem; color: var(--muted); }
+    header nav a { text-decoration: none; }
+    header nav a:hover, header nav a.active { color: var(--fg); }
+
+    main { max-width: 720px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+    .meta { font-size: 0.8rem; color: var(--muted); font-family: monospace; margin-bottom: 0.75rem; }
+    h1 { font-size: 2.1rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; margin: 0 0 1.5rem; }
+    h2 { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.01em; margin: 2.5rem 0 1rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin: 1.75rem 0 0.6rem; }
+    p { color: #e4e4e7; margin: 0 0 1.1rem; }
+    p.lead { font-size: 1.1rem; color: var(--fg); }
+    ul, ol { color: #e4e4e7; padding-left: 1.3rem; margin: 0 0 1.1rem; }
+    li { margin-bottom: 0.4rem; }
+    code { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85em; }
+    pre { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto; font-size: 0.85rem; }
+    pre code { border: none; padding: 0; background: none; }
+    a.inline-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+    .takeaways {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin: 1.5rem 0 2.5rem;
+    }
+    .takeaways p.label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.7rem; color: var(--accent); font-weight: 600; margin: 0 0 0.75rem; }
+    .takeaways ul { margin: 0; }
+    .table-wrap { overflow-x: auto; margin: 0 0 1.1rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
+    th { color: var(--muted); font-weight: 600; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+    .cta {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin: 2.5rem 0;
+      text-align: center;
+    }
+    .cta a {
+      display: inline-block;
+      margin-top: 0.75rem;
+      background: var(--fg);
+      color: #000;
+      font-weight: 600;
+      padding: 0.55rem 1.25rem;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 0.75rem;
+      font-size: 0.75rem; color: var(--muted);
+    }
+    footer a { text-decoration: none; margin-left: 1rem; }
+    footer a:hover { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">
+      <img src="/opencontext-logo.png" alt="open-context" />
+      <span>open-context</span>
+    </a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/blog/" class="active">Blog</a>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <div class="meta">September 25, 2026 · 7 min read</div>
+      <h1>DuckDB and SurrealDB: Two Unconventional MCP Backends</h1>
+
+      <p class="lead">
+        DuckDB and SurrealDB are the two most unusual entries in open-context's list of 15 MCP
+        context store backends. DuckDB is an embedded, columnar analytics engine you point at a
+        local file — no server, no client library beyond one npm package. SurrealDB is a remote,
+        multi-model database queried with its own language, SurrealQL, and needs its own bespoke
+        adapter rather than sharing code with the SQL or document families. Neither is the obvious
+        first choice for a context store, but each solves a specific problem the other backends
+        don't.
+      </p>
+
+      <div class="takeaways">
+        <p class="label">Key takeaways</p>
+        <ul>
+          <li>DuckDB is an embedded, in-process, columnar-vectorized database — no daemon, no port, just a local file, per DuckDB's own documentation.</li>
+          <li>SurrealDB is a multi-model database that natively supports document, graph, relational, time-series, and vector data through one query language, SurrealQL, per SurrealDB's own docs.</li>
+          <li>open-context's DuckDB driver reuses the same <code>sql</code> adapter family and <code>?</code> placeholder dialect as SQLite and Postgres — only the connection code differs.</li>
+          <li>SurrealDB gets its own adapter (<code>adapters/surreal.ts</code>) because SurrealQL and its schemaless <code>DEFINE TABLE</code> model don't fit the shared SQL or document driver contracts.</li>
+          <li><code>opencontext db migrate --to</code> moves existing contexts to either backend without losing data, and both pass the same conformance suite every backend has to.</li>
+        </ul>
+      </div>
+
+      <h2>Why these two get grouped together</h2>
+      <p>
+        Every other backend in <a class="inline-link" href="/">open-context</a>'s
+        <a class="inline-link" href="/blog/mcp-persistent-memory/">BYODB system</a> fits neatly into
+        one of two shared implementations: eight SQL engines behind a single <code>Dialect</code>
+        interface, and four document/key-value stores behind a single <code>DocumentDriver</code>
+        interface. DuckDB and SurrealDB are the exceptions, but for opposite reasons. DuckDB fits
+        the SQL family's shape perfectly — it just runs in a place none of the other seven do:
+        inside your own process. SurrealDB doesn't fit either shared shape at all, because it isn't
+        really a SQL database or a document database; it's both, plus graph and vector, in one
+        engine.
+      </p>
+
+      <h2>DuckDB: an embedded engine, not another networked database</h2>
+      <p>
+        DuckDB describes itself as an in-process SQL OLAP database with a columnar-vectorized
+        execution engine and no external dependencies at compile time or runtime
+        (<a class="inline-link" href="https://duckdb.org/why_duckdb" target="_blank" rel="noopener noreferrer">DuckDB docs: Why DuckDB</a>).
+        Where SQLite processes rows one at a time and is built for transactional workloads, DuckDB
+        processes batches of column values per operation and is built for analytical ones — the
+        same tradeoff that separates a row store from a column store in any database engine.
+      </p>
+      <p>
+        open-context's DuckDB driver connects through the <code>@duckdb/node-api</code> package,
+        opens (or creates) a file at the path you give it, and hands back a connection that speaks
+        the same <code>?</code>-placeholder SQL dialect as SQLite and Postgres. That's why DuckDB
+        lives in the <code>sql</code> adapter family alongside those two: the schema, the queries,
+        and the ordering guarantees are identical. The only thing that changes is which library
+        opens the file and executes against it.
+      </p>
+      <pre><code>export OPENCONTEXT_DB_URL="duckdb:///home/you/.opencontext/opencontext.duckdb"</code></pre>
+      <p>
+        Because it's embedded, DuckDB needs nothing running in the background — the same as
+        <a class="inline-link" href="/blog/sqlite-vs-postgres-mcp-store/">open-context's default SQLite backend</a>.
+        The reason to reach for it instead of SQLite is what happens after the data is in there:
+        DuckDB can also open that exact file with its own CLI or Python bindings and run genuine
+        analytical SQL over it — window functions, aggregations across your whole context history,
+        joins against other DuckDB or Parquet files — without exporting anything first.
+      </p>
+
+      <h2>SurrealDB: one engine, several data models</h2>
+      <p>
+        SurrealDB bills itself as a multi-model database that natively supports document, graph,
+        relational, time-series, geospatial, and vector data in a single engine, queried through
+        SurrealQL and reachable from official SDKs in multiple languages
+        (<a class="inline-link" href="https://surrealdb.com/surrealdb" target="_blank" rel="noopener noreferrer">SurrealDB: One database, every data model</a>).
+        It can run as a standalone server, embedded in an application, or distributed across a
+        cluster.
+      </p>
+      <p>
+        open-context only uses a small slice of that surface — SurrealQL's document-style
+        <code>CREATE</code>, <code>UPDATE MERGE</code>, and <code>SELECT ... WHERE</code>
+        statements against two schemaless tables, <code>oc_context</code> and <code>oc_bubble</code> —
+        but even that slice doesn't fit either shared adapter family. SurrealDB addresses data
+        inside a namespace and a database, not just a database name, and its connection needs to
+        say which auth level a credential belongs to: a root user signs in with just a username and
+        password, while a namespace- or database-scoped user has to name that namespace or database
+        too. None of the SQL or document drivers need that concept, so SurrealDB gets its own
+        adapter rather than a fifth <code>DocumentDriver</code> implementation.
+      </p>
+      <pre><code>export OPENCONTEXT_DB_URL="surrealdb://user:pass@host:8000/my-namespace/my-database?auth=root"</code></pre>
+      <p>
+        The <code>?auth=</code> parameter defaults to <code>root</code>; set it to
+        <code>namespace</code> or <code>database</code> if the credential you're using is scoped
+        that narrowly. On first connect, open-context runs the namespace, database, and table
+        <code>DEFINE</code> statements needed to set everything up, and quietly ignores permission
+        errors from the namespace/database creation step — a properly provisioned but
+        narrowly-scoped user doesn't need to run those and would otherwise fail on a step it never
+        required in the first place.
+      </p>
+
+      <h2>Picking between them</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>If you…</th><th>Reach for</th></tr></thead>
+          <tbody>
+            <tr><td>Want zero infrastructure and might query your context history with SQL directly</td><td>DuckDB — embedded, one file, analytical queries built in</td></tr>
+            <tr><td>Already store other application data as documents, graphs, or both</td><td>SurrealDB — one engine instead of running several specialized databases</td></tr>
+            <tr><td>Need the context store reachable from more than one machine</td><td>SurrealDB — it's a remote server by default</td></tr>
+            <tr><td>Want the simplest possible local setup with no npm packages beyond the driver</td><td>DuckDB — <code>npm i @duckdb/node-api</code> and nothing else to run</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Neither is the right pick if you just want the smallest possible footprint for a single
+        local install — that's still the default JSON file or
+        <a class="inline-link" href="/blog/sqlite-vs-postgres-mcp-store/">local SQLite</a>. DuckDB and
+        SurrealDB earn their place when you already have a reason to want their specific strengths:
+        analytical SQL over your saved context in DuckDB's case, or a shared engine across
+        multiple data shapes in SurrealDB's.
+      </p>
+
+      <h2>Connecting either one to open-context</h2>
+      <p>Switching backends is always the same shape — one environment variable, one connection string:</p>
+      <pre><code># DuckDB — requires: npm i @duckdb/node-api
+export OPENCONTEXT_DB_URL="duckdb:///path/to/opencontext.duckdb"
+
+# SurrealDB — requires: npm i surrealdb
+export OPENCONTEXT_DB_URL="surrealdb://user:pass@host:8000/namespace/database"</code></pre>
+      <p>
+        Already have contexts saved locally? Test the connection, switch to it, then bring your
+        history along in that order:
+      </p>
+      <pre><code>opencontext db test "surrealdb://user:pass@host:8000/namespace/database"
+opencontext db use "surrealdb://user:pass@host:8000/namespace/database"
+opencontext db migrate --to "surrealdb://user:pass@host:8000/namespace/database"</code></pre>
+      <p>
+        The migration only ever reads from your current store and writes to the new one, so a
+        failed run partway through leaves your original data untouched. Both backends pass the same
+        ~50-test conformance suite every one of open-context's
+        <a class="inline-link" href="/blog/mcp-persistent-memory/">15 supported backends</a> has to —
+        the CLI, the web UI, and every MCP tool behave identically once either one is active.
+      </p>
+
+      <div class="cta">
+        <p style="margin:0; color: var(--muted);">Point your MCP context store at DuckDB, SurrealDB, or any of 15 backends in one environment variable.</p>
+        <a href="/">Get started with open-context →</a>
+      </div>
+
+      <h2>FAQ</h2>
+
+      <h3>Does open-context support DuckDB and SurrealDB for the MCP context store?</h3>
+      <p>Yes. DuckDB is a built-in sql-family backend and SurrealDB has its own bespoke adapter. Point <code>OPENCONTEXT_DB_URL</code> at a <code>duckdb://</code> path for DuckDB or a <code>surrealdb://</code> connection string for SurrealDB, and the CLI, web UI, and MCP tools behave identically to every other backend.</p>
+
+      <h3>Do I need to install anything to use DuckDB with open-context?</h3>
+      <p>Yes, one optional peer dependency: <code>npm i @duckdb/node-api</code>. DuckDB itself is embedded — there's no separate server to run, only that one npm package to add once you point <code>OPENCONTEXT_DB_URL</code> at a <code>duckdb://</code> path.</p>
+
+      <h3>What do I need to install to use SurrealDB?</h3>
+      <p>The <code>surrealdb</code> peer dependency: <code>npm i surrealdb</code>. Unlike DuckDB, SurrealDB itself is a separate server process (or embedded engine) you run and connect to over the network, not a library that runs inside open-context.</p>
+
+      <h3>Does DuckDB require a server, or does it run embedded like SQLite?</h3>
+      <p>DuckDB runs embedded, the same way open-context's SQLite backend does. A <code>duckdb://</code> connection string just points at a local file path, and open-context's driver opens it in-process — there's no daemon to start or port to open.</p>
+
+      <h3>Can I switch from DuckDB or SurrealDB to another backend without losing my saved contexts?</h3>
+      <p>Yes. Run <code>opencontext db migrate --to "&lt;new-connection-string&gt;"</code> and every context and bubble is copied across. The migration only ever reads from your current store, so a failed run partway through leaves your original data untouched.</p>
+    </article>
+  </main>
+
+  <footer>
+    <span>open-context.dev — open source, self-hosted</span>
+    <div>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a href="https://hub.docker.com/r/adityakarnam/opencontext" target="_blank" rel="noopener noreferrer">Docker Hub</a>
+    </div>
+  </footer>
+</body>
+</html>
