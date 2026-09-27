@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "mysql-mssql-enterprise-mcp-store",
+      "title": "MySQL vs. SQL Server: Choosing Your Enterprise MCP Store",
+      "publishedAt": "2026-09-27",
+      "topicTag": "mysql-mssql-enterprise-mcp-store"
+    },
+    {
       "slug": "duckdb-surrealdb-mcp-store",
       "title": "DuckDB and SurrealDB: Two Unconventional MCP Backends",
       "publishedAt": "2026-09-25",
@@ -158,7 +164,6 @@
     }
   ],
   "backlog": [
-    { "topicTag": "mysql-mssql-enterprise-mcp-store", "workingTitle": "MySQL vs. SQL Server: Enterprise Options for Your MCP Store" },
     { "topicTag": "dashboard-privacy-toggle", "workingTitle": "The open-context Privacy Toggle: Blurring PII for Screenshares" },
     { "topicTag": "adding-new-ai-provider-parser", "workingTitle": "Adding a New AI Provider Parser to open-context" },
     { "topicTag": "ollama-model-choice-preferences", "workingTitle": "Choosing an Ollama Model for open-context's Preference Analysis" }

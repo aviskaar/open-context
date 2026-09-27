@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="/opencontext-logo.png" />
+  <title>MySQL vs. SQL Server: Choosing Your Enterprise MCP Store</title>
+  <meta name="description" content="MySQL and SQL Server both work as an open-context MCP context store. Here's how each backend behaves, when IT policy should decide, and how to switch safely." />
+  <link rel="canonical" href="https://open-context.dev/blog/mysql-mssql-enterprise-mcp-store/" />
+  <meta property="og:title" content="MySQL vs. SQL Server: Choosing Your Enterprise MCP Store" />
+  <meta property="og:description" content="MySQL and SQL Server both work as an open-context MCP context store. Here's how each backend behaves, when IT policy should decide, and how to switch safely." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://open-context.dev/blog/mysql-mssql-enterprise-mcp-store/" />
+  <meta property="og:image" content="https://open-context.dev/opencontext-logo.png" />
+  <meta property="article:published_time" content="2026-09-27" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="MySQL vs. SQL Server: Choosing Your Enterprise MCP Store" />
+  <meta name="twitter:description" content="Which of open-context's two enterprise SQL backends fits your MCP context store, and how to switch between them without losing data." />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BlogPosting",
+        "headline": "MySQL vs. SQL Server: Choosing Your Enterprise MCP Store",
+        "description": "MySQL and SQL Server both work as an open-context MCP context store. Here's how each backend behaves, when IT policy should decide, and how to switch safely.",
+        "datePublished": "2026-09-27",
+        "dateModified": "2026-09-27",
+        "mainEntityOfPage": { "@type": "WebPage", "@id": "https://open-context.dev/blog/mysql-mssql-enterprise-mcp-store/" },
+        "image": "https://open-context.dev/opencontext-logo.png",
+        "author": { "@type": "Organization", "name": "open-context", "url": "https://open-context.dev/" },
+        "publisher": {
+          "@type": "Organization",
+          "name": "open-context",
+          "logo": { "@type": "ImageObject", "url": "https://open-context.dev/opencontext-logo.png" }
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Does open-context support both MySQL and SQL Server for the MCP context store?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Point OPENCONTEXT_DB_URL at a mysql:// or mssql:// connection string and install the matching optional peer dependency — npm i mysql2 for MySQL/MariaDB, npm i mssql for SQL Server or Azure SQL. Both are two of the 15 backends behind the same storage contract, so the CLI, web UI, and MCP tools behave identically either way." }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I run SQL Server locally, or does it have to be Azure SQL?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Both work. open-context detects Azure SQL by hostname (anything ending in .database.windows.net) and turns on encryption and certificate verification automatically. Against a local or on-prem SQL Server instance it trusts a self-signed certificate by default, and you can add ?encrypt=false to the connection string if the server has no TLS configured at all." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does open-context work with managed MySQL like PlanetScale, RDS, or Cloud SQL?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Managed MySQL services all speak the same wire protocol, so the same mysql:// connection string works — append ?ssl=true (or a specific sslmode) for services that require an encrypted connection, which most managed providers do." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is search behavior different between MySQL and SQL Server?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. Both pass the same conformance test suite as every other backend, so ordering and case-insensitive substring search return identical results. What differs under the hood is collation: open-context pins MySQL to utf8mb4_bin and SQL Server's key columns to a binary collation, specifically so results match SQLite and Postgres instead of drifting on accents or case." }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I migrate from MySQL to SQL Server, or the other way around, without losing data?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. opencontext db migrate --to \"mssql://user:pass@host:1433/db\" (or the mysql:// equivalent) copies every context and bubble across. The source store is only ever read, so a migration that fails partway through leaves your original data untouched and safe to retry." }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <style>
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Regular-Trial-BF63f6cbd970ee9.otf') format('opentype'); font-weight: 400; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Medium-Trial-BF63f6cbdb24b6d.otf') format('opentype'); font-weight: 500; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Bold-Trial-BF63f6cbda1877f.otf') format('opentype'); font-weight: 700; font-style: normal; }
+
+    :root {
+      --bg: #000000;
+      --card: #0a0a0a;
+      --border: #262626;
+      --fg: #fafafa;
+      --muted: #a1a1aa;
+      --accent: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Styrene A', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.7;
+    }
+    a { color: inherit; }
+    header {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; gap: 1.5rem;
+      padding: 0.9rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.9);
+      backdrop-filter: blur(6px);
+    }
+    header .brand { display: flex; align-items: center; gap: 0.5rem; margin-right: auto; text-decoration: none; }
+    header .brand img { width: 32px; height: 32px; border-radius: 3px; }
+    header .brand span { font-size: 0.9rem; font-weight: 600; letter-spacing: -0.01em; }
+    header nav { display: flex; align-items: center; gap: 1.5rem; font-size: 0.875rem; color: var(--muted); }
+    header nav a { text-decoration: none; }
+    header nav a:hover, header nav a.active { color: var(--fg); }
+
+    main { max-width: 720px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+    .meta { font-size: 0.8rem; color: var(--muted); font-family: monospace; margin-bottom: 0.75rem; }
+    h1 { font-size: 2.1rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; margin: 0 0 1.5rem; }
+    h2 { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.01em; margin: 2.5rem 0 1rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin: 1.75rem 0 0.6rem; }
+    p { color: #e4e4e7; margin: 0 0 1.1rem; }
+    p.lead { font-size: 1.1rem; color: var(--fg); }
+    ul, ol { color: #e4e4e7; padding-left: 1.3rem; margin: 0 0 1.1rem; }
+    li { margin-bottom: 0.4rem; }
+    code { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85em; }
+    pre { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto; font-size: 0.85rem; }
+    pre code { border: none; padding: 0; background: none; }
+    a.inline-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+    .takeaways {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin: 1.5rem 0 2.5rem;
+    }
+    .takeaways p.label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.7rem; color: var(--accent); font-weight: 600; margin: 0 0 0.75rem; }
+    .takeaways ul { margin: 0; }
+    .table-wrap { overflow-x: auto; margin: 0 0 1.1rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
+    th { color: var(--muted); font-weight: 600; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+    .cta {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin: 2.5rem 0;
+      text-align: center;
+    }
+    .cta a {
+      display: inline-block;
+      margin-top: 0.75rem;
+      background: var(--fg);
+      color: #000;
+      font-weight: 600;
+      padding: 0.55rem 1.25rem;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 0.75rem;
+      font-size: 0.75rem; color: var(--muted);
+    }
+    footer a { text-decoration: none; margin-left: 1rem; }
+    footer a:hover { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">
+      <img src="/opencontext-logo.png" alt="open-context" />
+      <span>open-context</span>
+    </a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/blog/" class="active">Blog</a>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <div class="meta">September 27, 2026 · 7 min read</div>
+      <h1>MySQL vs. SQL Server: Choosing Your Enterprise MCP Store</h1>
+
+      <p class="lead">
+        Pick MySQL for open-context's MCP context store when you want the lowest operational
+        overhead among the enterprise SQL options — it's a single <code>npm i mysql2</code> away and
+        runs anywhere from a laptop to PlanetScale. Pick SQL Server when Azure SQL, an existing
+        Microsoft licensing agreement, or an IT policy already governs where your data lives — both
+        backends pass the identical <code>save_context</code>/<code>recall_context</code> contract, so
+        the decision comes down to what your infrastructure already runs, not what open-context
+        supports better.
+      </p>
+
+      <div class="takeaways">
+        <p class="label">Key takeaways</p>
+        <ul>
+          <li>open-context's context store is a pluggable adapter — MySQL/MariaDB and SQL Server/Azure SQL are two of 15 supported backends behind the identical <code>ContextStoreAdapter</code> interface.</li>
+          <li>Both are optional peer dependencies: <code>npm i mysql2</code> or <code>npm i mssql</code>. Nothing is installed until <code>OPENCONTEXT_DB_URL</code> actually points at one.</li>
+          <li>SQL Server encrypts by default and auto-detects Azure SQL by hostname; MySQL pins <code>utf8mb4_bin</code> collation so search stays case- and accent-sensitive like every other backend.</li>
+          <li>Both pass the same ~50-test conformance suite as SQLite, Postgres, and the rest, so ordering and search results are identical no matter which one you pick.</li>
+          <li><code>opencontext db migrate --to</code> copies contexts and bubbles between MySQL, SQL Server, or any of the other 13 backends without touching the source store.</li>
+        </ul>
+      </div>
+
+      <h2>Why "enterprise database" usually means MySQL or SQL Server</h2>
+      <p>
+        Most self-hosted <a class="inline-link" href="/">open-context</a> installs start with the
+        default JSON file or move to SQLite, and teams that outgrow a single writer typically reach
+        for Postgres next. MySQL and SQL Server show up for a different reason: they're already
+        running. A company standardized on Microsoft infrastructure has SQL Server or Azure SQL
+        licensed and monitored long before anyone asks Claude to remember project context. A team
+        running WordPress, Laravel, or a decade of PHP tooling already has a MySQL cluster with
+        backups, replicas, and an on-call rotation built around it. In both cases, the practical
+        question isn't "which database is technically best" — Postgres remains the
+        <a class="inline-link" href="https://survey.stackoverflow.co/2025/technology" target="_blank" rel="noopener noreferrer">most-used database among professional developers</a>
+        by a wide and growing margin — it's "which one can I point an MCP context store at without
+        asking for a new piece of infrastructure to be approved."
+      </p>
+
+      <h2>MySQL as an open-context backend</h2>
+      <p>
+        Point <code>OPENCONTEXT_DB_URL</code> at a <code>mysql://user:pass@host:3306/db</code>
+        connection string and install the driver:
+      </p>
+      <pre><code>npm i mysql2
+export OPENCONTEXT_DB_URL="mysql://user:pass@host:3306/opencontext"</code></pre>
+      <p>
+        Under the hood, open-context's MySQL dialect makes a few deliberate choices rather than
+        accepting server defaults. Every free-text column is declared <code>LONGTEXT</code> instead of
+        <code>TEXT</code>, because MySQL's <code>TEXT</code> type caps at 64KB and, in strict mode,
+        rejects anything longer instead of silently truncating it — a long conversation summary
+        saved as a context would otherwise fail outright. The schema is pinned to
+        <code>utf8mb4_bin</code> collation rather than inheriting the server's default: a
+        latin1-default database (still common on older MySQL installs) can't store emoji or CJK
+        text at all, and MySQL's usual <code>utf8mb4_0900_ai_ci</code> default is both case- and
+        accent-insensitive, which would make a search for "cafe" also match "café" and could collide
+        two different IDs that differ only in case. Case-insensitive search still works — it comes
+        from <code>LOWER()</code> in the query, not from the collation.
+      </p>
+      <p>
+        This backend also covers anything that speaks the same wire protocol: MariaDB, PlanetScale,
+        Azure Database for MySQL, Google Cloud SQL for MySQL, and Aurora MySQL all work through the
+        identical connection string — append <code>?ssl=true</code> for managed providers that
+        require an encrypted connection.
+      </p>
+
+      <h2>SQL Server as an open-context backend</h2>
+      <p>
+        SQL Server and Azure SQL use the same <code>mssql://user:pass@host:1433/db</code> scheme,
+        installed with:
+      </p>
+      <pre><code>npm i mssql
+export OPENCONTEXT_DB_URL="mssql://user:pass@host:1433/opencontext"</code></pre>
+      <p>
+        The driver behaves differently depending on where it thinks it's connecting. If the hostname
+        ends in <code>.database.windows.net</code>, open-context assumes Azure SQL and turns on
+        certificate verification, since Azure always requires TLS and presents a trusted certificate.
+        Against any other host — a local instance, an on-prem server — it trusts a self-signed
+        certificate by default, which is the normal setup for SQL Server outside Azure, and encryption
+        itself stays on unless you explicitly set <code>?encrypt=false</code>. Two connection-string
+        details are easy to get wrong: an IP address can't be used as the TLS server name, so
+        SQL Server has to be addressed by hostname; and Azure SQL usernames often contain an
+        <code>@</code> (like <code>admin@myserver</code>), which needs percent-encoding or the URL
+        parser reads it as the credential separator.
+      </p>
+      <p>
+        Schema setup also has to account for a race condition that MySQL and Postgres don't hit the
+        same way: SQL Server has no <code>CREATE TABLE IF NOT EXISTS</code>, so open-context checks
+        <code>OBJECT_ID(...)</code> and creates the table only if it's missing. Two processes opening
+        a brand-new database at the same moment can both see nothing and both try to create it — one
+        wins, and the other gets error 2714 (table exists) or 1913 (index exists), which
+        open-context treats as success rather than a failure, since the intent was already satisfied.
+      </p>
+
+      <h2>Choosing between them</h2>
+      <p>Neither backend is faster or more capable for open-context's purposes — the conformance suite guarantees identical behavior. What actually differs:</p>
+      <ul>
+        <li><strong>What's already running.</strong> If your team already operates one of these, use it. Standing up a new database just for an MCP context store defeats the point of a lightweight tool.</li>
+        <li><strong>Licensing and cost.</strong> MySQL and MariaDB are free and open source with no per-core licensing to negotiate; SQL Server's licensing is a real cost most teams are already paying for other reasons before they get to open-context.</li>
+        <li><strong>Compliance and IT policy.</strong> Organizations standardized on Azure or Microsoft's compliance certifications often mandate SQL Server or Azure SQL specifically — that decision is usually made well above the level of an MCP context store.</li>
+        <li><strong>Where your team already runs SSL/TLS.</strong> SQL Server's encrypt-by-default behavior and Azure auto-detection make it slightly more forgiving of a misconfigured connection string in a cloud environment; MySQL's TLS handling mirrors Postgres's <code>sslmode</code> vocabulary, which is more familiar if you've already configured a Postgres backend.</li>
+      </ul>
+
+      <h2>Switching without losing data</h2>
+      <p>
+        You don't have to get this right on the first try. The same three-command flow that moves
+        data between any two of open-context's 15 backends works here:
+      </p>
+      <pre><code># Try the connection first, without committing to it
+opencontext db test "mssql://user:pass@host:1433/opencontext"
+
+# Switch the active backend
+opencontext db use "mssql://user:pass@host:1433/opencontext"
+
+# Copy everything from the old store into the new one
+opencontext db migrate --to "mssql://user:pass@host:1433/opencontext"</code></pre>
+      <p>
+        The migration only reads from the source store and writes exclusively to the target, so a
+        failed run halfway through leaves your original MySQL data untouched and safe to retry.
+        Bubbles are migrated before the contexts that reference them, and every backend gets its own
+        fresh IDs rather than reusing the source's, exactly as with the
+        <a class="inline-link" href="/blog/sqlite-vs-postgres-mcp-store/">SQLite-to-Postgres migration path</a>.
+      </p>
+
+      <h2>What stays identical no matter which you pick</h2>
+      <p>
+        Both backends run through the same ~50-test conformance suite as every other adapter:
+        identical ordering (<code>createdAt</code> ascending, then <code>id</code>), identical
+        case-insensitive substring search across content, tags, and source, and the same rule that an
+        unset field like <code>bubbleId</code> comes back <code>undefined</code>, never <code>null</code>.
+        <code>save_context</code>, <code>recall_context</code>, and the rest of the
+        <a class="inline-link" href="/blog/mcp-tools-reference/">MCP tools</a> can't tell which SQL
+        engine is underneath. And because both connection strings carry a password, they're handled
+        the same way as any other backend's credentials — see
+        <a class="inline-link" href="/blog/mcp-server-security/">securing a local MCP server</a> for
+        how open-context redacts them before anything reaches the UI or a log line.
+      </p>
+
+      <div class="cta">
+        <p style="margin:0; color: var(--muted);">Point your MCP context store at MySQL or SQL Server in one environment variable.</p>
+        <a href="/">Get started with open-context →</a>
+      </div>
+
+      <h2>FAQ</h2>
+
+      <h3>Does open-context support both MySQL and SQL Server for the MCP context store?</h3>
+      <p>Yes. Point <code>OPENCONTEXT_DB_URL</code> at a <code>mysql://</code> or <code>mssql://</code> connection string and install the matching optional peer dependency — <code>npm i mysql2</code> for MySQL/MariaDB, <code>npm i mssql</code> for SQL Server or Azure SQL. Both are two of the 15 backends behind the same storage contract, so the CLI, web UI, and MCP tools behave identically either way.</p>
+
+      <h3>Can I run SQL Server locally, or does it have to be Azure SQL?</h3>
+      <p>Both work. open-context detects Azure SQL by hostname (anything ending in <code>.database.windows.net</code>) and turns on encryption and certificate verification automatically. Against a local or on-prem SQL Server instance it trusts a self-signed certificate by default, and you can add <code>?encrypt=false</code> to the connection string if the server has no TLS configured at all.</p>
+
+      <h3>Does open-context work with managed MySQL like PlanetScale, RDS, or Cloud SQL?</h3>
+      <p>Yes. Managed MySQL services all speak the same wire protocol, so the same <code>mysql://</code> connection string works — append <code>?ssl=true</code> (or a specific <code>sslmode</code>) for services that require an encrypted connection, which most managed providers do.</p>
+
+      <h3>Is search behavior different between MySQL and SQL Server?</h3>
+      <p>No. Both pass the same conformance test suite as every other backend, so ordering and case-insensitive substring search return identical results. What differs under the hood is collation: open-context pins MySQL to <code>utf8mb4_bin</code> and SQL Server's key columns to a binary collation, specifically so results match SQLite and Postgres instead of drifting on accents or case.</p>
+
+      <h3>Can I migrate from MySQL to SQL Server, or the other way around, without losing data?</h3>
+      <p>Yes. <code>opencontext db migrate --to "mssql://user:pass@host:1433/db"</code> (or the <code>mysql://</code> equivalent) copies every context and bubble across. The source store is only ever read, so a migration that fails partway through leaves your original data untouched and safe to retry.</p>
+    </article>
+  </main>
+
+  <footer>
+    <span>open-context.dev — open source, self-hosted</span>
+    <div>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a href="https://hub.docker.com/r/adityakarnam/opencontext" target="_blank" rel="noopener noreferrer">Docker Hub</a>
+    </div>
+  </footer>
+</body>
+</html>
