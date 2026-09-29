@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "dashboard-privacy-toggle",
+      "title": "Blur Personal Info Before Screen Sharing: The Privacy Toggle",
+      "publishedAt": "2026-09-29",
+      "topicTag": "dashboard-privacy-toggle"
+    },
+    {
       "slug": "mysql-mssql-enterprise-mcp-store",
       "title": "MySQL vs. SQL Server: Choosing Your Enterprise MCP Store",
       "publishedAt": "2026-09-27",
@@ -164,7 +170,6 @@
     }
   ],
   "backlog": [
-    { "topicTag": "dashboard-privacy-toggle", "workingTitle": "The open-context Privacy Toggle: Blurring PII for Screenshares" },
     { "topicTag": "adding-new-ai-provider-parser", "workingTitle": "Adding a New AI Provider Parser to open-context" },
     { "topicTag": "ollama-model-choice-preferences", "workingTitle": "Choosing an Ollama Model for open-context's Preference Analysis" }
   ]
