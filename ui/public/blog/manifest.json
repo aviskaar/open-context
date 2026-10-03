@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "adding-new-ai-provider-parser",
+      "title": "How to Write a New AI Provider Parser in open-context",
+      "publishedAt": "2026-10-03",
+      "topicTag": "adding-new-ai-provider-parser"
+    },
+    {
       "slug": "dashboard-privacy-toggle",
       "title": "Blur Personal Info Before Screen Sharing: The Privacy Toggle",
       "publishedAt": "2026-09-29",
@@ -170,7 +176,6 @@
     }
   ],
   "backlog": [
-    { "topicTag": "adding-new-ai-provider-parser", "workingTitle": "Adding a New AI Provider Parser to open-context" },
     { "topicTag": "ollama-model-choice-preferences", "workingTitle": "Choosing an Ollama Model for open-context's Preference Analysis" }
   ]
 }
