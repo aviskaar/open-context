@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "ollama-model-choice-preferences",
+      "title": "Ollama Model Sizes Explained: RAM, Speed, and Quality",
+      "publishedAt": "2026-10-05",
+      "topicTag": "ollama-model-choice-preferences"
+    },
+    {
       "slug": "adding-new-ai-provider-parser",
       "title": "How to Write a New AI Provider Parser in open-context",
       "publishedAt": "2026-10-03",
@@ -175,7 +181,5 @@
       "topicTag": "bubbles-project-workspaces"
     }
   ],
-  "backlog": [
-    { "topicTag": "ollama-model-choice-preferences", "workingTitle": "Choosing an Ollama Model for open-context's Preference Analysis" }
-  ]
+  "backlog": []
 }
