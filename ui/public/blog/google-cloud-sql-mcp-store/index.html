@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="/opencontext-logo.png" />
+  <title>Google Cloud SQL as Your MCP Context Store: Setup Guide</title>
+  <meta name="description" content="open-context can use Google Cloud SQL as its MCP context store via Google's Node.js connector, with IAM database auth replacing passwords and no proxy sidecar." />
+  <link rel="canonical" href="https://open-context.dev/blog/google-cloud-sql-mcp-store/" />
+  <meta property="og:title" content="Google Cloud SQL as Your MCP Context Store: Setup Guide" />
+  <meta property="og:description" content="open-context can use Google Cloud SQL as its MCP context store via Google's Node.js connector, with IAM database auth replacing passwords and no proxy sidecar." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://open-context.dev/blog/google-cloud-sql-mcp-store/" />
+  <meta property="og:image" content="https://open-context.dev/opencontext-logo.png" />
+  <meta property="article:published_time" content="2026-10-07" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Google Cloud SQL as Your MCP Context Store: Setup Guide" />
+  <meta name="twitter:description" content="How to point open-context's MCP context store at Google Cloud SQL using the official Node.js connector and IAM database auth instead of a proxy sidecar." />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BlogPosting",
+        "headline": "Google Cloud SQL as Your MCP Context Store: Setup Guide",
+        "description": "open-context can use Google Cloud SQL as its MCP context store via Google's Node.js connector, with IAM database auth replacing passwords and no proxy sidecar.",
+        "datePublished": "2026-10-07",
+        "dateModified": "2026-10-07",
+        "mainEntityOfPage": { "@type": "WebPage", "@id": "https://open-context.dev/blog/google-cloud-sql-mcp-store/" },
+        "image": "https://open-context.dev/opencontext-logo.png",
+        "author": { "@type": "Organization", "name": "open-context", "url": "https://open-context.dev/" },
+        "publisher": {
+          "@type": "Organization",
+          "name": "open-context",
+          "logo": { "@type": "ImageObject", "url": "https://open-context.dev/opencontext-logo.png" }
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Does open-context's Cloud SQL support cover MySQL and SQL Server too, or only PostgreSQL?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Only Cloud SQL for PostgreSQL has a dedicated cloudsql:// driver today, addressed by instance connection name and routed through Google's Node.js connector. Cloud SQL for MySQL and Cloud SQL for SQL Server are still reachable through open-context's regular mysql:// or mssql:// connection strings, the same way any other managed MySQL or SQL Server instance is, since those Cloud SQL flavors expose a standard IP endpoint." }
+          },
+          {
+            "@type": "Question",
+            "name": "What happens if I leave the password out of the cloudsql:// connection string?",
+            "acceptedAnswer": { "@type": "Answer", "text": "open-context switches to IAM database authentication instead of a stored password. The connector authenticates using whatever Google Cloud identity is already active in the environment (a service account or Application Default Credentials), provided that identity has IAM database authentication enabled on the Cloud SQL instance." }
+          },
+          {
+            "@type": "Question",
+            "name": "Do I need to run the Cloud SQL Auth Proxy alongside open-context?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. The @google-cloud/cloud-sql-connector package used by open-context's cloudsql:// driver runs in the same Node.js process and handles TLS and instance routing itself, which is what Google now recommends over running the Cloud SQL Auth Proxy as a separate sidecar." }
+          },
+          {
+            "@type": "Question",
+            "name": "Can open-context reach a Cloud SQL instance that only has a private IP?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Add ?ipType=private to the cloudsql:// connection string and the connector routes over the instance's private IP instead of its public one. The host running open-context still needs network access to that private IP, typically through a VPC connector or a VM inside the same VPC." }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I migrate my existing MCP context store into Cloud SQL without losing data?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. opencontext db migrate --to \"cloudsql://user:pass@project:region:instance/database\" copies every context and bubble from whatever backend you're currently using into Cloud SQL, reading the source store without modifying it, so a failed run is safe to retry." }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <style>
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Regular-Trial-BF63f6cbd970ee9.otf') format('opentype'); font-weight: 400; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Medium-Trial-BF63f6cbdb24b6d.otf') format('opentype'); font-weight: 500; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Bold-Trial-BF63f6cbda1877f.otf') format('opentype'); font-weight: 700; font-style: normal; }
+
+    :root {
+      --bg: #000000;
+      --card: #0a0a0a;
+      --border: #262626;
+      --fg: #fafafa;
+      --muted: #a1a1aa;
+      --accent: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Styrene A', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.7;
+    }
+    a { color: inherit; }
+    header {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; gap: 1.5rem;
+      padding: 0.9rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.9);
+      backdrop-filter: blur(6px);
+    }
+    header .brand { display: flex; align-items: center; gap: 0.5rem; margin-right: auto; text-decoration: none; }
+    header .brand img { width: 32px; height: 32px; border-radius: 3px; }
+    header .brand span { font-size: 0.9rem; font-weight: 600; letter-spacing: -0.01em; }
+    header nav { display: flex; align-items: center; gap: 1.5rem; font-size: 0.875rem; color: var(--muted); }
+    header nav a { text-decoration: none; }
+    header nav a:hover, header nav a.active { color: var(--fg); }
+
+    main { max-width: 720px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+    .meta { font-size: 0.8rem; color: var(--muted); font-family: monospace; margin-bottom: 0.75rem; }
+    h1 { font-size: 2.1rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; margin: 0 0 1.5rem; }
+    h2 { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.01em; margin: 2.5rem 0 1rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin: 1.75rem 0 0.6rem; }
+    p { color: #e4e4e7; margin: 0 0 1.1rem; }
+    p.lead { font-size: 1.1rem; color: var(--fg); }
+    ul, ol { color: #e4e4e7; padding-left: 1.3rem; margin: 0 0 1.1rem; }
+    li { margin-bottom: 0.4rem; }
+    code { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85em; }
+    pre { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto; font-size: 0.85rem; }
+    pre code { border: none; padding: 0; background: none; }
+    a.inline-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+    .takeaways {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin: 1.5rem 0 2.5rem;
+    }
+    .takeaways p.label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.7rem; color: var(--accent); font-weight: 600; margin: 0 0 0.75rem; }
+    .takeaways ul { margin: 0; }
+    .table-wrap { overflow-x: auto; margin: 0 0 1.1rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
+    th { color: var(--muted); font-weight: 600; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+    .cta {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin: 2.5rem 0;
+      text-align: center;
+    }
+    .cta a {
+      display: inline-block;
+      margin-top: 0.75rem;
+      background: var(--fg);
+      color: #000;
+      font-weight: 600;
+      padding: 0.55rem 1.25rem;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 0.75rem;
+      font-size: 0.75rem; color: var(--muted);
+    }
+    footer a { text-decoration: none; margin-left: 1rem; }
+    footer a:hover { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">
+      <img src="/opencontext-logo.png" alt="open-context" />
+      <span>open-context</span>
+    </a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/blog/" class="active">Blog</a>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <div class="meta">October 7, 2026 · 6 min read</div>
+      <h1>Google Cloud SQL as Your MCP Context Store: Setup Guide</h1>
+
+      <p class="lead">
+        open-context can run its MCP context store on Google Cloud SQL for PostgreSQL: point
+        <code>OPENCONTEXT_DB_URL</code> at a <code>cloudsql://user:password@project:region:instance/database</code>
+        connection string, install two optional packages, and Claude's <code>save_context</code> and
+        <code>recall_context</code> tools read and write straight to your Cloud SQL instance. The
+        official Node.js connector handles TLS and instance routing itself, and if you leave the
+        password out it authenticates with IAM instead — no Cloud SQL Auth Proxy sidecar, no
+        certificate files, and no firewall rule to open.
+      </p>
+
+      <div class="takeaways">
+        <p class="label">Key takeaways</p>
+        <ul>
+          <li>open-context's <code>cloudsql://</code> scheme is one of 15 backends behind the identical <code>ContextStoreAdapter</code> interface — the CLI, web UI, and all 6 MCP tools behave the same way on it as on any other backend.</li>
+          <li>It targets Cloud SQL for PostgreSQL specifically, addressed by instance connection name (<code>project:region:instance</code>), not a hostname or IP.</li>
+          <li>Two optional peer dependencies: <code>pg</code> and <code>@google-cloud/cloud-sql-connector</code>. Neither installs until <code>OPENCONTEXT_DB_URL</code> actually points at a <code>cloudsql://</code> URL.</li>
+          <li>Omit the password and open-context authenticates with IAM database authentication instead of a stored credential; include one and it authenticates normally.</li>
+          <li><code>opencontext db test</code> and <code>db migrate --to</code> let you try Cloud SQL and then move your existing contexts into it without losing data.</li>
+        </ul>
+      </div>
+
+      <h2>Why Cloud SQL needs its own connection scheme</h2>
+      <p>
+        Every other SQL backend in <a class="inline-link" href="/">open-context</a> — Postgres,
+        MySQL, SQL Server — is addressed by a normal <code>host:port</code> pair, because that's
+        what a TCP connection needs. Cloud SQL instances don't expose a stable hostname in the same
+        way; Google addresses them by <strong>instance connection name</strong>, a
+        <code>project:region:instance</code> triple. open-context's DSN parser has to read that
+        format by hand rather than with the standard URL parser, specifically because the instance
+        name itself contains colons that would otherwise be misread as a port separator. The result
+        is a connection string shaped like <code>cloudsql://user:password@project:region:instance/database</code>
+        instead of the usual <code>host:port</code> form.
+      </p>
+
+      <h2>Setting OPENCONTEXT_DB_URL for Cloud SQL</h2>
+      <p>Install the driver and point the environment variable at your instance:</p>
+      <pre><code>npm i pg @google-cloud/cloud-sql-connector
+export OPENCONTEXT_DB_URL="cloudsql://user:password@my-project:us-central1:opencontext-db/opencontext"</code></pre>
+      <p>
+        Under the hood, <code>createCloudSqlDriver</code> hands that instance connection name to
+        Google's <code>Connector</code> class, which negotiates the connection details — TLS
+        certificates, routing, authentication — and hands back options that go straight into a
+        normal <code>pg.Pool</code>. By default it reaches the instance over its public IP; add
+        <code>?ipType=private</code> to the connection string to route over a private IP instead, if
+        your Cloud SQL instance and the machine running open-context share a VPC.
+      </p>
+
+      <h2>Password or IAM — choosing how it authenticates</h2>
+      <p>
+        open-context decides the authentication mode from whether a password is present in the
+        connection string. Include one, and the connector authenticates with that password like any
+        other Postgres connection. Leave it out, and open-context asks the connector to use
+        <a class="inline-link" href="https://cloud.google.com/sql/docs/postgres/iam-logins" target="_blank" rel="noopener noreferrer">IAM database authentication</a>
+        instead — the identity already active in the environment (a service account's Application
+        Default Credentials, for example) logs in directly, as long as that identity has IAM database
+        authentication enabled on the instance and a database user mapped to it. That removes a
+        password that would otherwise need to be stored and rotated somewhere, which is the main
+        security reason Google recommends IAM authentication for service-to-database connections in
+        the first place.
+      </p>
+
+      <h2>What the connector replaces: no more Auth Proxy sidecar</h2>
+      <p>
+        Before Google shipped per-language connectors, the standard way to reach Cloud SQL securely
+        was the Cloud SQL Auth Proxy — a separate binary run as a sidecar process that terminated TLS
+        and forwarded a local socket to the instance. The
+        <a class="inline-link" href="https://cloud.google.com/blog/products/databases/cloud-sql-nodejs-connector-is-ga" target="_blank" rel="noopener noreferrer">Node.js connector reached general availability in 2023</a>
+        and does the same job — TLS 1.3 encryption, identity verification, no certificate files to
+        manage or firewall rules to open — inside the same process as the application, which is why
+        open-context links directly against <code>@google-cloud/cloud-sql-connector</code> instead of
+        shelling out to a separate proxy binary. One fewer process to deploy, monitor, and keep
+        patched.
+      </p>
+
+      <h2>Everything else behaves like every other backend</h2>
+      <p>
+        Once connected, a Cloud SQL-backed store passes the same roughly 50-test conformance suite as
+        every other adapter: identical ordering (<code>createdAt</code> ascending, then
+        <code>id</code>), identical case-insensitive substring search across content, tags, and
+        source, and the same rule that an unset field like <code>bubbleId</code> comes back
+        <code>undefined</code>, never <code>null</code>. None of the
+        <a class="inline-link" href="/blog/mcp-tools-reference/">6 MCP tools</a> can tell they're
+        talking to Cloud SQL instead of self-hosted Postgres or SQLite. Moving existing contexts in
+        follows the same three-command flow as any other
+        <a class="inline-link" href="/blog/db-migrate-backends-guide/">backend migration</a>:
+      </p>
+      <pre><code># Confirm the connection works before switching to it
+opencontext db test "cloudsql://user:password@my-project:us-central1:opencontext-db/opencontext"
+
+# Make it the active store
+opencontext db use "cloudsql://user:password@my-project:us-central1:opencontext-db/opencontext"
+
+# Copy everything from wherever you are today
+opencontext db migrate --to "cloudsql://user:password@my-project:us-central1:opencontext-db/opencontext"</code></pre>
+      <p>
+        The migration only reads from the source store and writes to the target, so an interrupted
+        run leaves your existing data untouched and safe to retry.
+      </p>
+
+      <h2>When Cloud SQL is the right call here</h2>
+      <p>
+        Cloud SQL earns its place among open-context's 15 backends in one specific situation: you're
+        already running workloads on Google Cloud, and standing up a database outside that project
+        means a new piece of infrastructure, a new IAM policy, and a new thing to monitor. If that's
+        not your situation, a simpler option usually wins — <code>sqlite://</code> needs nothing
+        installed and covers a single machine, and self-hosted
+        <a class="inline-link" href="/blog/sqlite-vs-postgres-mcp-store/">Postgres</a> avoids any
+        dependency on a specific cloud provider at all. Cloud SQL's advantage isn't raw performance —
+        the conformance suite guarantees identical read/write behavior across every backend — it's
+        that your context store inherits backups, monitoring, and access control you've probably
+        already set up for everything else running in that project.
+      </p>
+
+      <div class="cta">
+        <p style="margin:0; color: var(--muted);">Point your MCP context store at Google Cloud SQL in one environment variable.</p>
+        <a href="/">Get started with open-context →</a>
+      </div>
+
+      <h2>FAQ</h2>
+
+      <h3>Does open-context's Cloud SQL support cover MySQL and SQL Server too, or only PostgreSQL?</h3>
+      <p>Only Cloud SQL for PostgreSQL has a dedicated <code>cloudsql://</code> driver today, addressed by instance connection name and routed through Google's Node.js connector. Cloud SQL for MySQL and Cloud SQL for SQL Server are still reachable through open-context's regular <code>mysql://</code> or <code>mssql://</code> connection strings, the same way any other managed MySQL or SQL Server instance is, since those Cloud SQL flavors expose a standard IP endpoint.</p>
+
+      <h3>What happens if I leave the password out of the cloudsql:// connection string?</h3>
+      <p>open-context switches to IAM database authentication instead of a stored password. The connector authenticates using whatever Google Cloud identity is already active in the environment (a service account or Application Default Credentials), provided that identity has IAM database authentication enabled on the Cloud SQL instance.</p>
+
+      <h3>Do I need to run the Cloud SQL Auth Proxy alongside open-context?</h3>
+      <p>No. The <code>@google-cloud/cloud-sql-connector</code> package used by open-context's <code>cloudsql://</code> driver runs in the same Node.js process and handles TLS and instance routing itself, which is what Google now recommends over running the Cloud SQL Auth Proxy as a separate sidecar.</p>
+
+      <h3>Can open-context reach a Cloud SQL instance that only has a private IP?</h3>
+      <p>Yes. Add <code>?ipType=private</code> to the <code>cloudsql://</code> connection string and the connector routes over the instance's private IP instead of its public one. The host running open-context still needs network access to that private IP, typically through a VPC connector or a VM inside the same VPC.</p>
+
+      <h3>Can I migrate my existing MCP context store into Cloud SQL without losing data?</h3>
+      <p>Yes. <code>opencontext db migrate --to "cloudsql://user:pass@project:region:instance/database"</code> copies every context and bubble from whatever backend you're currently using into Cloud SQL, reading the source store without modifying it, so a failed run is safe to retry.</p>
+    </article>
+  </main>
+
+  <footer>
+    <span>open-context.dev — open source, self-hosted</span>
+    <div>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a href="https://hub.docker.com/r/adityakarnam/opencontext" target="_blank" rel="noopener noreferrer">Docker Hub</a>
+    </div>
+  </footer>
+</body>
+</html>

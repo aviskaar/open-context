@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "google-cloud-sql-mcp-store",
+      "title": "Google Cloud SQL as Your MCP Context Store: Setup Guide",
+      "publishedAt": "2026-10-07",
+      "topicTag": "cloudsql-managed-mcp-store"
+    },
+    {
       "slug": "ollama-model-choice-preferences",
       "title": "Ollama Model Sizes Explained: RAM, Speed, and Quality",
       "publishedAt": "2026-10-05",
@@ -181,5 +187,22 @@
       "topicTag": "bubbles-project-workspaces"
     }
   ],
-  "backlog": []
+  "backlog": [
+    {
+      "topicTag": "byodb-architecture-overview",
+      "workingTitle": "Inside open-context's BYODB Architecture: One Interface, 15 Databases"
+    },
+    {
+      "topicTag": "vendor-exporter-pattern",
+      "workingTitle": "How open-context Exports Your Preferences to ChatGPT and Gemini"
+    },
+    {
+      "topicTag": "conversion-pipeline-explained",
+      "workingTitle": "From ChatGPT Export to Claude Format: Inside the Conversion Pipeline"
+    },
+    {
+      "topicTag": "in-memory-mcp-store-testing",
+      "workingTitle": "The In-Memory MCP Store: Fast Local Testing Without a Database"
+    }
+  ]
 }
