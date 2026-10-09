@@ -11,6 +11,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://open-context.dev/blog/byodb-architecture-overview/</loc>
+    <lastmod>2026-10-09</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://open-context.dev/blog/google-cloud-sql-mcp-store/</loc>
     <lastmod>2026-10-07</lastmod>
     <changefreq>monthly</changefreq>

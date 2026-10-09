@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "byodb-architecture-overview",
+      "title": "Inside open-context's BYODB: One Interface, 15 Backends",
+      "publishedAt": "2026-10-09",
+      "topicTag": "byodb-architecture-overview"
+    },
+    {
       "slug": "google-cloud-sql-mcp-store",
       "title": "Google Cloud SQL as Your MCP Context Store: Setup Guide",
       "publishedAt": "2026-10-07",
@@ -188,10 +194,6 @@
     }
   ],
   "backlog": [
-    {
-      "topicTag": "byodb-architecture-overview",
-      "workingTitle": "Inside open-context's BYODB Architecture: One Interface, 15 Databases"
-    },
     {
       "topicTag": "vendor-exporter-pattern",
       "workingTitle": "How open-context Exports Your Preferences to ChatGPT and Gemini"

@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="/opencontext-logo.png" />
+  <title>Inside open-context's BYODB: One Interface, 15 Backends</title>
+  <meta name="description" content="open-context's BYODB architecture runs one MCP context store interface on 15 databases, from SQLite to DynamoDB, by writing CRUD once per adapter family." />
+  <link rel="canonical" href="https://open-context.dev/blog/byodb-architecture-overview/" />
+  <meta property="og:title" content="Inside open-context's BYODB: One Interface, 15 Backends" />
+  <meta property="og:description" content="open-context's BYODB architecture runs one MCP context store interface on 15 databases, from SQLite to DynamoDB, by writing CRUD once per adapter family." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://open-context.dev/blog/byodb-architecture-overview/" />
+  <meta property="og:image" content="https://open-context.dev/opencontext-logo.png" />
+  <meta property="article:published_time" content="2026-10-09" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Inside open-context's BYODB: One Interface, 15 Backends" />
+  <meta name="twitter:description" content="How open-context's adapter architecture runs one context store interface on 15 databases without reimplementing storage logic per backend." />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BlogPosting",
+        "headline": "Inside open-context's BYODB: One Interface, 15 Backends",
+        "description": "open-context's BYODB architecture runs one MCP context store interface on 15 databases, from SQLite to DynamoDB, by writing CRUD once per adapter family.",
+        "datePublished": "2026-10-09",
+        "dateModified": "2026-10-09",
+        "mainEntityOfPage": { "@type": "WebPage", "@id": "https://open-context.dev/blog/byodb-architecture-overview/" },
+        "image": "https://open-context.dev/opencontext-logo.png",
+        "author": { "@type": "Organization", "name": "open-context", "url": "https://open-context.dev/" },
+        "publisher": {
+          "@type": "Organization",
+          "name": "open-context",
+          "logo": { "@type": "ImageObject", "url": "https://open-context.dev/opencontext-logo.png" }
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Is BYODB tied to a specific database vendor?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. BYODB is open-context's own adapter layer, not a product from any database vendor. It supports 15 backends across four families — file, SQL, document/key-value, and multi-model — and treats them all as equal citizens behind one interface." }
+          },
+          {
+            "@type": "Question",
+            "name": "Do I need to install anything to use BYODB?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Not for the default setup. The JSON file, SQLite, and in-memory backends work with zero extra installs. Remote backends like Postgres, MongoDB, or DynamoDB need their driver as an optional peer dependency, and opencontext tells you exactly what to run if it's missing." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does switching database backends delete my existing context?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. The `opencontext db migrate` command only ever reads from the source backend and writes to the target, so your original store is left intact unless you explicitly pass `--replace` to empty the target first." }
+          },
+          {
+            "@type": "Question",
+            "name": "How does open-context guarantee all 15 backends behave the same way?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Every adapter must pass the same conformance suite — about 50 tests covering ordering, search semantics, and read-your-writes consistency — unmodified. If a backend can't satisfy a test, that's documented as a limitation, not a reason to weaken the test." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is search identical across every backend?",
+            "acceptedAnswer": { "@type": "Answer", "text": "The results are identical, but the mechanism differs. SQL backends push case-insensitive substring filtering down into the database. Document and key-value backends (MongoDB, Redis, Firestore, DynamoDB) have no portable substring predicate, so opencontext reads the collection and filters in memory instead." }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <style>
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Regular-Trial-BF63f6cbd970ee9.otf') format('opentype'); font-weight: 400; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Medium-Trial-BF63f6cbdb24b6d.otf') format('opentype'); font-weight: 500; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Bold-Trial-BF63f6cbda1877f.otf') format('opentype'); font-weight: 700; font-style: normal; }
+
+    :root {
+      --bg: #000000;
+      --card: #0a0a0a;
+      --border: #262626;
+      --fg: #fafafa;
+      --muted: #a1a1aa;
+      --accent: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Styrene A', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.7;
+    }
+    a { color: inherit; }
+    header {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; gap: 1.5rem;
+      padding: 0.9rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.9);
+      backdrop-filter: blur(6px);
+    }
+    header .brand { display: flex; align-items: center; gap: 0.5rem; margin-right: auto; text-decoration: none; }
+    header .brand img { width: 32px; height: 32px; border-radius: 3px; }
+    header .brand span { font-size: 0.9rem; font-weight: 600; letter-spacing: -0.01em; }
+    header nav { display: flex; align-items: center; gap: 1.5rem; font-size: 0.875rem; color: var(--muted); }
+    header nav a { text-decoration: none; }
+    header nav a:hover, header nav a.active { color: var(--fg); }
+
+    main { max-width: 720px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+    .meta { font-size: 0.8rem; color: var(--muted); font-family: monospace; margin-bottom: 0.75rem; }
+    h1 { font-size: 2.1rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; margin: 0 0 1.5rem; }
+    h2 { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.01em; margin: 2.5rem 0 1rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin: 1.75rem 0 0.6rem; }
+    p { color: #e4e4e7; margin: 0 0 1.1rem; }
+    p.lead { font-size: 1.1rem; color: var(--fg); }
+    ul, ol { color: #e4e4e7; padding-left: 1.3rem; margin: 0 0 1.1rem; }
+    li { margin-bottom: 0.4rem; }
+    code { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85em; }
+    pre { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto; font-size: 0.85rem; }
+    pre code { border: none; padding: 0; background: none; }
+    a.inline-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+    .takeaways {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin: 1.5rem 0 2.5rem;
+    }
+    .takeaways p.label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.7rem; color: var(--accent); font-weight: 600; margin: 0 0 0.75rem; }
+    .takeaways ul { margin: 0; }
+    .table-wrap { overflow-x: auto; margin: 0 0 1.1rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
+    th { color: var(--muted); font-weight: 600; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+    .cta {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin: 2.5rem 0;
+      text-align: center;
+    }
+    .cta a {
+      display: inline-block;
+      margin-top: 0.75rem;
+      background: var(--fg);
+      color: #000;
+      font-weight: 600;
+      padding: 0.55rem 1.25rem;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 0.75rem;
+      font-size: 0.75rem; color: var(--muted);
+    }
+    footer a { text-decoration: none; margin-left: 1rem; }
+    footer a:hover { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">
+      <img src="/opencontext-logo.png" alt="open-context" />
+      <span>open-context</span>
+    </a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/blog/" class="active">Blog</a>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <div class="meta">October 9, 2026 · 7 min read</div>
+      <h1>Inside open-context's BYODB: One Interface, 15 Backends</h1>
+
+      <p class="lead">
+        open-context's BYODB ("bring your own database") architecture lets its MCP context store run on 15
+        different databases — from a zero-config JSON file to Postgres, MongoDB, DynamoDB, and SurrealDB —
+        without rewriting storage logic for each one. It does this by grouping backends into three shared
+        implementations (file, SQL, document/key-value) plus one bespoke multi-model adapter, so adding a
+        new database means writing a small driver, not a new storage engine.
+      </p>
+
+      <div class="takeaways">
+        <p class="label">Key takeaways</p>
+        <ul>
+          <li>BYODB supports 15 backends across four families: file (JSON), SQL (SQLite, Postgres, MySQL, SQL Server, DuckDB, libSQL/Turso, Cloudflare D1, Google Cloud SQL), document/key-value (MongoDB, Redis, Firestore, DynamoDB, in-memory), and multi-model (SurrealDB).</li>
+          <li>CRUD logic is written once per family — a SQL engine needs only a ~50-line <code>Dialect</code>, and a document store needs six <code>DocumentDriver</code> methods — not a full reimplementation.</li>
+          <li>Every backend must pass the same ~50-test conformance suite unmodified; a backend that can't satisfy it gets a documented limitation, not a relaxed test.</li>
+          <li>Database drivers are optional peer dependencies, loaded only when their scheme is used, so the default install and Docker image stay small.</li>
+          <li>Switching backends is non-destructive: <code>opencontext db migrate</code> only reads the source store and never deletes it.</li>
+        </ul>
+      </div>
+
+      <h2>The problem: one context store, fifteen very different databases</h2>
+      <p>
+        <a class="inline-link" href="/">open-context</a>'s <a class="inline-link" href="/blog/mcp-tools-reference/">MCP server</a>
+        gives Claude persistent memory through six tools — <code>save_context</code>, <code>recall_context</code>,
+        and friends — all backed by a context store. By default that store is a JSON file at
+        <code>~/.opencontext/contexts.json</code>, which needs zero configuration. But a JSON file doesn't scale
+        to thousands of entries, doesn't work across machines, and isn't what a team already running Postgres
+        or Redis wants to add to its stack. So open-context lets the store live anywhere: set
+        <code>OPENCONTEXT_DB_URL</code> to a connection string and the same CLI, web UI, and MCP tools keep
+        working, unchanged, against SQLite, eight different SQL engines, five document/key-value stores, or
+        SurrealDB.
+      </p>
+      <p>
+        The naive way to build that would be fifteen separate implementations of save, recall, search, update,
+        and delete — one per database. open-context does the opposite: it defines the storage contract once,
+        as a <code>ContextStoreAdapter</code> interface, and shares the actual CRUD logic across every backend
+        in the same family.
+      </p>
+
+      <h2>Three adapter families, not fifteen implementations</h2>
+      <p>
+        Looking at <code>src/store/adapters/</code>, there are exactly three shared implementations plus one
+        standalone adapter:
+      </p>
+
+      <h3>File — <code>adapters/json.ts</code></h3>
+      <p>
+        The default. Reads and writes a single JSON document on disk. No network, no driver, no setup — this
+        is what every existing install already uses and nothing changes for them.
+      </p>
+
+      <h3>SQL — <code>adapters/sql.ts</code> + a <code>Dialect</code> per engine</h3>
+      <p>
+        SQLite, DuckDB, libSQL/Turso, Cloudflare D1, Postgres, Google Cloud SQL, MySQL, and SQL Server all
+        share one <code>createSqlAdapter</code> implementation. What differs between them is captured in a
+        small <code>Dialect</code> object: how bind placeholders are written (<code>?</code>, <code>$1</code>,
+        or <code>@p1</code>), the DDL that creates the schema, and how string concatenation works. SQLite,
+        Postgres, and DuckDB share one portable schema outright — every column is <code>TEXT</code>, and tags
+        are stored as a JSON-encoded string rather than a native array, so no query needs to branch on engine.
+        SQL Server is the one dialect that diverges on all four points, which is exactly why they're
+        configurable properties instead of hardcoded constants.
+      </p>
+
+      <h3>Document / key-value — <code>adapters/document.ts</code> + a <code>DocumentDriver</code> per engine</h3>
+      <p>
+        MongoDB, Redis, Firestore, DynamoDB, and the in-memory test backend all implement the same six-method
+        <code>DocumentDriver</code> interface: <code>connect</code>, <code>close</code>, <code>ping</code>,
+        <code>get</code>, <code>put</code>, <code>remove</code>, and <code>list</code>. Everything else —
+        search, tag filtering, ordering, cascading bubble deletes — is implemented once in
+        <code>createDocumentAdapter</code> and reused by all five. Adding a new NoSQL backend means writing
+        those six methods, not the whole storage contract.
+      </p>
+
+      <h3>Multi-model — <code>adapters/surreal.ts</code></h3>
+      <p>
+        SurrealDB is the one bespoke adapter, since it doesn't fit cleanly into either the SQL or document
+        model. It still implements the same <code>ContextStoreAdapter</code> interface as everything else —
+        callers never know the difference.
+      </p>
+
+      <h2>What stays constant no matter which database you pick</h2>
+      <p>
+        The point of a shared contract is that behavior doesn't drift between backends. open-context's
+        conformance suite (<code>tests/store/conformance.ts</code>, ~50 tests) is the only definition of
+        "correct," and it enforces a handful of invariants across all 15 backends:
+      </p>
+      <ul>
+        <li><strong>Ordering</strong> — every list method returns results sorted by <code>createdAt</code> ascending, then <code>id</code> ascending, identically across backends.</li>
+        <li><strong>Search semantics</strong> — case-insensitive substring matching over content, tags, and source; multi-keyword search requires every term to match.</li>
+        <li><strong>Absent vs. null</strong> — an unset field like <code>bubbleId</code> comes back <code>undefined</code>, never <code>null</code>, which takes explicit handling in several drivers.</li>
+        <li><strong>Read-your-writes</strong> — a write must be visible on the very next read. DynamoDB, for example, needs <code>ConsistentRead: true</code> to guarantee this.</li>
+      </ul>
+      <p>
+        Search is where the underlying mechanism visibly differs even though the results don't: SQL backends
+        push the substring filter down into the database with a query. Document and key-value stores have no
+        portable case-insensitive substring predicate, so opencontext reads the whole collection and filters in
+        application memory instead. Same output, different cost — which is also why the project recommends
+        moving off the document family once a store grows large, something covered in more depth in the
+        <a class="inline-link" href="/blog/sqlite-vs-postgres-mcp-store/">SQLite vs. Postgres comparison</a>.
+      </p>
+
+      <h2>Adding backend number sixteen</h2>
+      <p>
+        Because the contract is centralized, the repo documents a fixed checklist for adding a new database:
+        register the scheme, parse any backend-specific connection-string fields, write a <code>Dialect</code>
+        or <code>DocumentDriver</code> (not a full adapter), register it in the build switch, load the driver
+        with <code>importOptional()</code> so a missing package produces an install instruction instead of a
+        crash, declare it as an optional peer dependency, add it to the Docker Compose test stack, and run it
+        against the conformance suite until every test passes. Nothing about the CLI, web UI, or MCP tool
+        definitions changes — the new backend simply becomes another valid connection string.
+      </p>
+
+      <h2>Why this matters beyond open-context's own code</h2>
+      <p>
+        The underlying goal is the same one that motivates open-context's export tooling: don't let your tools
+        lock your data into one vendor's shape. A context store that only ran on one database would force a
+        choice between "stay small" and "rewrite everything to scale." BYODB means a solo developer can start
+        with the zero-config JSON file, a team can promote to Postgres without touching application code, and
+        an edge deployment can use Cloudflare D1 — all speaking to the exact same <code>ContextStoreAdapter</code>
+        and passing the exact same test suite.
+      </p>
+
+      <div class="cta">
+        <p style="margin:0; color: var(--muted);">See which backend fits your setup — check what's installed, test a connection, and migrate without losing data.</p>
+        <a href="/">Explore open-context →</a>
+      </div>
+
+      <h2>FAQ</h2>
+
+      <h3>Is BYODB tied to a specific database vendor?</h3>
+      <p>No. BYODB is open-context's own adapter layer, not a product from any database vendor. It supports 15 backends across four families — file, SQL, document/key-value, and multi-model — and treats them all as equal citizens behind one interface.</p>
+
+      <h3>Do I need to install anything to use BYODB?</h3>
+      <p>Not for the default setup. The JSON file, SQLite, and in-memory backends work with zero extra installs. Remote backends like Postgres, MongoDB, or DynamoDB need their driver as an optional peer dependency, and opencontext tells you exactly what to run if it's missing.</p>
+
+      <h3>Does switching database backends delete my existing context?</h3>
+      <p>No. The <code>opencontext db migrate</code> command only ever reads from the source backend and writes to the target, so your original store is left intact unless you explicitly pass <code>--replace</code> to empty the target first.</p>
+
+      <h3>How does open-context guarantee all 15 backends behave the same way?</h3>
+      <p>Every adapter must pass the same conformance suite — about 50 tests covering ordering, search semantics, and read-your-writes consistency — unmodified. If a backend can't satisfy a test, that's documented as a limitation, not a reason to weaken the test.</p>
+
+      <h3>Is search identical across every backend?</h3>
+      <p>The results are identical, but the mechanism differs. SQL backends push case-insensitive substring filtering down into the database. Document and key-value backends (MongoDB, Redis, Firestore, DynamoDB) have no portable substring predicate, so opencontext reads the collection and filters in memory instead.</p>
+    </article>
+  </main>
+
+  <footer>
+    <span>open-context.dev — open source, self-hosted</span>
+    <div>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a href="https://hub.docker.com/r/adityakarnam/opencontext" target="_blank" rel="noopener noreferrer">Docker Hub</a>
+    </div>
+  </footer>
+</body>
+</html>
