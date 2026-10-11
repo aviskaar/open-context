@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "conversion-pipeline-explained",
+      "title": "From ChatGPT Export to Claude Format: Inside the Pipeline",
+      "publishedAt": "2026-10-11",
+      "topicTag": "conversion-pipeline-explained"
+    },
+    {
       "slug": "byodb-architecture-overview",
       "title": "Inside open-context's BYODB: One Interface, 15 Backends",
       "publishedAt": "2026-10-09",
@@ -194,14 +200,6 @@
     }
   ],
   "backlog": [
-    {
-      "topicTag": "vendor-exporter-pattern",
-      "workingTitle": "How open-context Exports Your Preferences to ChatGPT and Gemini"
-    },
-    {
-      "topicTag": "conversion-pipeline-explained",
-      "workingTitle": "From ChatGPT Export to Claude Format: Inside the Conversion Pipeline"
-    },
     {
       "topicTag": "in-memory-mcp-store-testing",
       "workingTitle": "The In-Memory MCP Store: Fast Local Testing Without a Database"
