@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "in-memory-mcp-store-testing",
+      "title": "In-Memory MCP Context Store: Fast Local Testing Guide",
+      "publishedAt": "2026-10-13",
+      "topicTag": "in-memory-mcp-store-testing"
+    },
+    {
       "slug": "conversion-pipeline-explained",
       "title": "From ChatGPT Export to Claude Format: Inside the Pipeline",
       "publishedAt": "2026-10-11",
@@ -201,8 +207,24 @@
   ],
   "backlog": [
     {
-      "topicTag": "in-memory-mcp-store-testing",
-      "workingTitle": "The In-Memory MCP Store: Fast Local Testing Without a Database"
+      "topicTag": "conformance-suite-contract",
+      "workingTitle": "The Conformance Suite: How open-context Keeps 15 Backends Honest"
+    },
+    {
+      "topicTag": "mcp-client-comparison",
+      "workingTitle": "Claude Desktop vs. Claude Code MCP Config: What's Different"
+    },
+    {
+      "topicTag": "contexts-vs-bubbles-tagging",
+      "workingTitle": "Tags vs. Bubbles: Two Ways to Organize open-context Memory"
+    },
+    {
+      "topicTag": "ollama-local-llm-privacy",
+      "workingTitle": "Why open-context Uses Ollama Instead of a Hosted LLM API"
+    },
+    {
+      "topicTag": "dsn-connection-string-security",
+      "workingTitle": "How open-context Keeps Database Passwords Out of Your Logs"
     }
   ]
 }

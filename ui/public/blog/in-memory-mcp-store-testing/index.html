@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="/opencontext-logo.png" />
+  <title>In-Memory MCP Context Store: Fast Local Testing Guide</title>
+  <meta name="description" content="opencontext's memory:// adapter stores MCP context in RAM, giving every test a clean, disk-free store. Learn how it works and when to use it instead of SQLite." />
+  <link rel="canonical" href="https://open-context.dev/blog/in-memory-mcp-store-testing/" />
+  <meta property="og:title" content="In-Memory MCP Context Store: Fast Local Testing Guide" />
+  <meta property="og:description" content="opencontext's memory:// adapter stores MCP context in RAM, giving every test a clean, disk-free store. Learn how it works and when to use it instead of SQLite." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://open-context.dev/blog/in-memory-mcp-store-testing/" />
+  <meta property="og:image" content="https://open-context.dev/opencontext-logo.png" />
+  <meta property="article:published_time" content="2026-10-13" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="In-Memory MCP Context Store: Fast Local Testing Guide" />
+  <meta name="twitter:description" content="opencontext's memory:// adapter keeps MCP context in RAM — a clean, disk-free store for every test run. Here's how it works and when to reach for it." />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BlogPosting",
+        "headline": "In-Memory MCP Context Store: Fast Local Testing Guide",
+        "description": "opencontext's memory:// adapter stores MCP context in RAM, giving every test a clean, disk-free store. Learn how it works and when to use it instead of SQLite.",
+        "datePublished": "2026-10-13",
+        "dateModified": "2026-10-13",
+        "mainEntityOfPage": { "@type": "WebPage", "@id": "https://open-context.dev/blog/in-memory-mcp-store-testing/" },
+        "image": "https://open-context.dev/opencontext-logo.png",
+        "author": { "@type": "Organization", "name": "open-context", "url": "https://open-context.dev/" },
+        "publisher": {
+          "@type": "Organization",
+          "name": "open-context",
+          "logo": { "@type": "ImageObject", "url": "https://open-context.dev/opencontext-logo.png" }
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Does memory:// persist data across restarts?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. A memory:// store lives only for the lifetime of the Node.js process. Restart the server or the CLI and the store is empty again — that is by design, not a bug." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is memory:// safe to use in production?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. It has no disk backing and no replication, so a process crash or restart loses everything. Use it for trying opencontext out, local development, demos, and automated tests — move to SQLite, JSON, or a remote backend for anything you need to keep." }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I run two separate in-memory stores at once?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Everything after memory:// names an independent store, so memory://scratch and memory://tests hold separate data in the same process, while plain memory:// always points at the default store." }
+          },
+          {
+            "@type": "Question",
+            "name": "Do I need to install anything to use the in-memory backend?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. memory:// is built into opencontext with no optional dependency to install, the same as the default json:// backend and the built-in sqlite:// backend." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does the in-memory backend behave differently from the other backends?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. It passes the same storage conformance suite as every other backend, so search, tag filtering, ordering, and bubble behavior are identical. Only persistence differs." }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <style>
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Regular-Trial-BF63f6cbd970ee9.otf') format('opentype'); font-weight: 400; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Medium-Trial-BF63f6cbdb24b6d.otf') format('opentype'); font-weight: 500; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Bold-Trial-BF63f6cbda1877f.otf') format('opentype'); font-weight: 700; font-style: normal; }
+
+    :root {
+      --bg: #000000;
+      --card: #0a0a0a;
+      --border: #262626;
+      --fg: #fafafa;
+      --muted: #a1a1aa;
+      --accent: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Styrene A', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.7;
+    }
+    a { color: inherit; }
+    header {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; gap: 1.5rem;
+      padding: 0.9rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.9);
+      backdrop-filter: blur(6px);
+    }
+    header .brand { display: flex; align-items: center; gap: 0.5rem; margin-right: auto; text-decoration: none; }
+    header .brand img { width: 32px; height: 32px; border-radius: 3px; }
+    header .brand span { font-size: 0.9rem; font-weight: 600; letter-spacing: -0.01em; }
+    header nav { display: flex; align-items: center; gap: 1.5rem; font-size: 0.875rem; color: var(--muted); }
+    header nav a { text-decoration: none; }
+    header nav a:hover, header nav a.active { color: var(--fg); }
+
+    main { max-width: 720px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+    .meta { font-size: 0.8rem; color: var(--muted); font-family: monospace; margin-bottom: 0.75rem; }
+    h1 { font-size: 2.1rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; margin: 0 0 1.5rem; }
+    h2 { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.01em; margin: 2.5rem 0 1rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin: 1.75rem 0 0.6rem; }
+    p { color: #e4e4e7; margin: 0 0 1.1rem; }
+    p.lead { font-size: 1.1rem; color: var(--fg); }
+    ul, ol { color: #e4e4e7; padding-left: 1.3rem; margin: 0 0 1.1rem; }
+    li { margin-bottom: 0.4rem; }
+    code { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85em; }
+    pre { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto; font-size: 0.85rem; }
+    pre code { border: none; padding: 0; background: none; }
+    a.inline-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+    .takeaways {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin: 1.5rem 0 2.5rem;
+    }
+    .takeaways p.label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.7rem; color: var(--accent); font-weight: 600; margin: 0 0 0.75rem; }
+    .takeaways ul { margin: 0; }
+    .table-wrap { overflow-x: auto; margin: 0 0 1.1rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
+    th { color: var(--muted); font-weight: 600; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+    .cta {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin: 2.5rem 0;
+      text-align: center;
+    }
+    .cta a {
+      display: inline-block;
+      margin-top: 0.75rem;
+      background: var(--fg);
+      color: #000;
+      font-weight: 600;
+      padding: 0.55rem 1.25rem;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 0.75rem;
+      font-size: 0.75rem; color: var(--muted);
+    }
+    footer a { text-decoration: none; margin-left: 1rem; }
+    footer a:hover { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">
+      <img src="/opencontext-logo.png" alt="open-context" />
+      <span>open-context</span>
+    </a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/blog/" class="active">Blog</a>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <div class="meta">October 13, 2026 · 6 min read</div>
+      <h1>In-Memory MCP Context Store: Fast Local Testing Guide</h1>
+
+      <p class="lead">
+        opencontext can back its MCP context store entirely in RAM with the connection string
+        <code>memory://</code> — no file, no database, no driver to install. Point
+        <code>OPENCONTEXT_DB_URL</code> at it and every <code>save_context</code> or
+        <code>recall_context</code> call reads and writes a plain JavaScript <code>Map</code> that
+        disappears the moment the process exits, which makes it the fastest way to try the tool,
+        run a demo, or run an automated test suite without touching disk.
+      </p>
+
+      <div class="takeaways">
+        <p class="label">Key takeaways</p>
+        <ul>
+          <li><code>memory://</code> is a built-in opencontext backend with zero install — the same tier as the default JSON file and built-in SQLite.</li>
+          <li>Data lives only for the lifetime of the Node.js process; restarting the server or CLI empties the store.</li>
+          <li>It's the reference implementation of opencontext's shared <code>DocumentDriver</code> interface, the same abstraction behind MongoDB, Redis, Firestore, and DynamoDB.</li>
+          <li>It passes the identical ~50-test storage conformance suite every other backend passes, so behavior is interchangeable, not just "close enough."</li>
+          <li>Naming a store after the scheme (<code>memory://scratch</code>) runs independent, isolated stores side by side in one process — exactly what test suites need.</li>
+        </ul>
+      </div>
+
+      <h2>What <code>memory://</code> actually is</h2>
+      <p>
+        opencontext's context store sits behind a pluggable adapter interface — the project calls
+        this BYODB, "bring your own database" — with 15 supported backends spanning JSON files, SQL
+        engines, document stores, and a multi-model option. <code>memory://</code> is the simplest
+        member of that list: a process-local <code>Map</code> keyed by collection (contexts and
+        bubbles), wrapped in the same six-method driver contract that every document-style backend
+        implements.
+      </p>
+      <p>
+        Anything after the scheme names an independent store. <code>memory://</code> alone always
+        points at a store named <code>default</code>; <code>memory://scratch</code> opens a
+        completely separate one. Reconnecting to the same name in the same process hands back the
+        same data — the store is keyed by name in a module-level registry, not recreated on every
+        call — which is what makes it behave like a real store instead of silently losing data
+        between an HTTP request and the MCP server reading it back.
+      </p>
+
+      <h2>Why this exists alongside 14 persisted backends</h2>
+      <p>
+        Most of opencontext's backend list exists so teams can point the MCP context store at
+        infrastructure they already run — Postgres, Redis, Cloudflare D1, and so on. <code>memory://</code>
+        exists for the opposite reason: for the moments persistence is actively unwanted.
+      </p>
+      <ul>
+        <li><strong>First run.</strong> Someone trying opencontext for the first time shouldn't need to think about a file path or a database before <code>save_context</code> works.</li>
+        <li><strong>Local development.</strong> Iterating on the MCP server or the HTTP API without accumulating test contexts in your real <code>~/.opencontext/contexts.json</code>.</li>
+        <li><strong>Automated tests.</strong> Every test gets a clean store with no file to delete afterward and no shared state to leak between test files run in parallel.</li>
+        <li><strong>Demos and CI smoke checks.</strong> Spin up the HTTP server, exercise the API, throw the container away.</li>
+      </ul>
+      <p>
+        That last use case is also why the backend is worth documenting on its own: opencontext's
+        store conformance suite (<code>tests/store/conformance.ts</code>) — roughly 50 tests that
+        every adapter must pass unmodified — runs against JSON, SQLite, and <code>memory://</code>
+        with no external services at all, because those three cover all three backend families
+        (file, SQL, document) without a single Docker container. The in-memory adapter isn't a toy;
+        it's the fixture the whole test matrix leans on to stay fast.
+      </p>
+
+      <h2>Using it</h2>
+      <p>
+        The store resolves from the first of these that is set:
+        <code>OPENCONTEXT_DB_URL</code>, then <code>database.url</code> in
+        <code>~/.opencontext/config.json</code>, then the legacy <code>OPENCONTEXT_STORE_PATH</code>,
+        then the default JSON file. Setting the environment variable is the simplest way to force
+        an in-memory run:
+      </p>
+      <pre><code>OPENCONTEXT_DB_URL="memory://" npm run mcp:server</code></pre>
+      <p>Or against the HTTP server, for a throwaway container:</p>
+      <pre><code>docker run -p 3000:3000 \
+  -e OPENCONTEXT_DB_URL="memory://" \
+  adityakarnam/opencontext:latest</code></pre>
+      <p>
+        No volume mount, no <code>-v</code> flag — because there's nothing on disk to persist. The
+        CLI's database commands work against it like any other backend:
+      </p>
+      <pre><code>opencontext db use "memory://"
+opencontext db status</code></pre>
+      <p>
+        Inside a test file, name the store explicitly so parallel test runs never collide, and reset
+        it between tests:
+      </p>
+      <pre><code>import { createStore } from '../src/store/index.js';
+import { resetMemoryStore } from '../src/store/drivers/memory.js';
+
+const store = await createStore('memory://my-test-suite');
+// ...run assertions...
+resetMemoryStore('my-test-suite');</code></pre>
+
+      <h2>What you give up</h2>
+      <p>
+        The trade is exactly what the name implies: no durability. There's no file to inspect after
+        a crash, no replication, and nothing survives a process restart — stopping the MCP server
+        and starting it again hands Claude an empty store. That's a feature for a test fixture and a
+        liability for anything you actually want to keep, which is why opencontext's own docs point
+        newcomers toward the default JSON file or SQLite for real use and reserve <code>memory://</code>
+        for trying things out.
+      </p>
+      <p>
+        There's also no cross-process sharing. Two separate <code>node</code> processes each get
+        their own registry of named stores, so running the HTTP server and the MCP server as
+        separate processes against <code>memory://</code> gives each one its own private, disconnected
+        data — unlike <code>json://</code> or <code>sqlite://</code>, where both processes read and
+        write the same file on disk.
+      </p>
+
+      <h2>How it stacks up against JSON and SQLite</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Backend</th><th>Install</th><th>Survives a restart?</th><th>Best for</th></tr></thead>
+          <tbody>
+            <tr><td><code>memory://</code></td><td>built in</td><td>No</td><td>Tests, demos, first run</td></tr>
+            <tr><td><code>json://</code></td><td>built in <em>(default)</em></td><td>Yes</td><td>One machine, casual use</td></tr>
+            <tr><td><code>sqlite://</code></td><td>built in</td><td>Yes</td><td>Thousands of contexts, concurrent HTTP + MCP servers</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        All three need nothing installed beyond opencontext itself, and — per the project's own
+        BYODB contract — all three pass the identical conformance suite, so switching between them
+        for development versus production changes nothing about how <a class="inline-link" href="/blog/mcp-tools-reference/">opencontext's six MCP tools</a>
+        behave. Only the lifetime of the data changes.
+      </p>
+
+      <h2>Under the hood: one adapter, six methods</h2>
+      <p>
+        opencontext's document-family backends — <code>memory</code>, <code>mongodb</code>,
+        <code>redis</code>, <code>firestore</code>, and <code>dynamodb</code> — all implement the same
+        small <code>DocumentDriver</code> interface: <code>connect</code>, <code>close</code>,
+        <code>ping</code>, <code>get</code>, <code>put</code>, <code>remove</code>, and
+        <code>list</code>. A shared <code>createDocumentAdapter</code> function layers search,
+        tag filtering, ordering, and bubble cascading on top of whichever driver it's given, so none
+        of that logic is duplicated per backend. The in-memory driver is the simplest possible
+        implementation of that contract — a <code>Map</code> standing in for a network call — which
+        is exactly why the project uses it as the reference implementation the shared adapter is
+        tested against.
+      </p>
+      <p>
+        This is also the architectural reason adding a new NoSQL backend to opencontext is a small
+        change rather than a rewrite: implement those same six methods against a new store, and the
+        search semantics, ordering guarantees, and MCP tool behavior come for free.
+      </p>
+
+      <h2>When to graduate off it</h2>
+      <p>
+        Move to a persisted backend the moment you want a context to still be there tomorrow. For a
+        single machine, that's the default <code>json://</code> store or <code>sqlite://</code> once
+        the store grows past a few thousand entries or you run the HTTP and MCP servers concurrently.
+        For context shared across machines or teammates, any of opencontext's remote backends —
+        Postgres, MySQL, Cloudflare D1, and the rest — apply. <code>memory://</code> was never meant
+        to compete with those; it's meant to get out of the way until you decide you need one of them.
+      </p>
+
+      <div class="cta">
+        <p style="margin:0; color: var(--muted);">Try opencontext's MCP server with zero setup — point it at <code>memory://</code> and start saving context.</p>
+        <a href="/">Get started with open-context →</a>
+      </div>
+
+      <h2>FAQ</h2>
+
+      <h3>Does memory:// persist data across restarts?</h3>
+      <p>No. A <code>memory://</code> store lives only for the lifetime of the Node.js process. Restart the server or the CLI and the store is empty again — that is by design, not a bug.</p>
+
+      <h3>Is memory:// safe to use in production?</h3>
+      <p>No. It has no disk backing and no replication, so a process crash or restart loses everything. Use it for trying opencontext out, local development, demos, and automated tests — move to SQLite, JSON, or a remote backend for anything you need to keep.</p>
+
+      <h3>Can I run two separate in-memory stores at once?</h3>
+      <p>Yes. Everything after <code>memory://</code> names an independent store, so <code>memory://scratch</code> and <code>memory://tests</code> hold separate data in the same process, while plain <code>memory://</code> always points at the default store.</p>
+
+      <h3>Do I need to install anything to use the in-memory backend?</h3>
+      <p>No. <code>memory://</code> is built into opencontext with no optional dependency to install, the same as the default <code>json://</code> backend and the built-in <code>sqlite://</code> backend.</p>
+
+      <h3>Does the in-memory backend behave differently from the other backends?</h3>
+      <p>No. It passes the same storage conformance suite as every other backend, so search, tag filtering, ordering, and bubble behavior are identical. Only persistence differs.</p>
+    </article>
+  </main>
+
+  <footer>
+    <span>open-context.dev — open source, self-hosted</span>
+    <div>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a href="https://hub.docker.com/r/adityakarnam/opencontext" target="_blank" rel="noopener noreferrer">Docker Hub</a>
+    </div>
+  </footer>
+</body>
+</html>
