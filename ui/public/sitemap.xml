@@ -11,6 +11,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://open-context.dev/blog/conformance-suite-contract/</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://open-context.dev/blog/in-memory-mcp-store-testing/</loc>
     <lastmod>2026-10-13</lastmod>
     <changefreq>monthly</changefreq>

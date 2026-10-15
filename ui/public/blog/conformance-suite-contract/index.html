@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="/opencontext-logo.png" />
+  <title>How open-context Tests 15 Database Backends With One Suite</title>
+  <meta name="description" content="open-context runs one 50-test conformance suite against all 15 database backends it supports, so every one — from SQLite to DynamoDB — behaves identically." />
+  <link rel="canonical" href="https://open-context.dev/blog/conformance-suite-contract/" />
+  <meta property="og:title" content="How open-context Tests 15 Database Backends With One Suite" />
+  <meta property="og:description" content="open-context runs one 50-test conformance suite against all 15 database backends it supports, so every one — from SQLite to DynamoDB — behaves identically." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://open-context.dev/blog/conformance-suite-contract/" />
+  <meta property="og:image" content="https://open-context.dev/opencontext-logo.png" />
+  <meta property="article:published_time" content="2026-10-15" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="How open-context Tests 15 Database Backends With One Suite" />
+  <meta name="twitter:description" content="One 50-test conformance suite is the only definition of correct behavior for every open-context MCP context store backend." />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BlogPosting",
+        "headline": "How open-context Tests 15 Database Backends With One Suite",
+        "description": "open-context runs one 50-test conformance suite against all 15 database backends it supports, so every one — from SQLite to DynamoDB — behaves identically.",
+        "datePublished": "2026-10-15",
+        "dateModified": "2026-10-15",
+        "mainEntityOfPage": { "@type": "WebPage", "@id": "https://open-context.dev/blog/conformance-suite-contract/" },
+        "image": "https://open-context.dev/opencontext-logo.png",
+        "author": { "@type": "Organization", "name": "open-context", "url": "https://open-context.dev/" },
+        "publisher": {
+          "@type": "Organization",
+          "name": "open-context",
+          "logo": { "@type": "ImageObject", "url": "https://open-context.dev/opencontext-logo.png" }
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What is the open-context conformance suite?",
+            "acceptedAnswer": { "@type": "Answer", "text": "It's a single file, tests/store/conformance.ts, containing about 50 tests that every one of open-context's 15 database backends must pass. It is the only definition of correct behavior for the context store — not a README, not a comment, the tests themselves." }
+          },
+          {
+            "@type": "Question",
+            "name": "How many database backends does open-context support?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Fifteen: json, sqlite, libsql, d1, duckdb, postgres, cloudsql, mysql, mssql, memory, mongodb, redis, firestore, dynamodb, and surrealdb. They share three adapter implementations — SQL, document/KV, and a bespoke SurrealDB adapter — rather than fifteen separate codebases." }
+          },
+          {
+            "@type": "Question",
+            "name": "Do I need to run every backend's database to test open-context's store?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. npm test runs the full conformance suite against json, sqlite, and memory with zero external services, since those need only a temp file or RAM. The other 12 backends run via npm run test:backends once their connection strings are set, typically against the services in docker-compose.test.yml." }
+          },
+          {
+            "@type": "Question",
+            "name": "What happens if a backend can't pass all 50 conformance tests?",
+            "acceptedAnswer": { "@type": "Answer", "text": "The test stays as written. If a backend genuinely cannot satisfy an invariant, that becomes a documented limitation of that backend, not a reason to loosen the suite — weakening the contract to fit one backend would let every other backend regress silently." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does the conformance suite check credentials or connection strings?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Indirectly, through the adapter contract: every driver receives dsn.canonical, never dsn.raw, and everything user-visible about a connection string is expected to go through redactDsn() so passwords never leak into logs or error messages." }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <style>
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Regular-Trial-BF63f6cbd970ee9.otf') format('opentype'); font-weight: 400; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Medium-Trial-BF63f6cbdb24b6d.otf') format('opentype'); font-weight: 500; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Bold-Trial-BF63f6cbda1877f.otf') format('opentype'); font-weight: 700; font-style: normal; }
+
+    :root {
+      --bg: #000000;
+      --card: #0a0a0a;
+      --border: #262626;
+      --fg: #fafafa;
+      --muted: #a1a1aa;
+      --accent: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Styrene A', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.7;
+    }
+    a { color: inherit; }
+    header {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; gap: 1.5rem;
+      padding: 0.9rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.9);
+      backdrop-filter: blur(6px);
+    }
+    header .brand { display: flex; align-items: center; gap: 0.5rem; margin-right: auto; text-decoration: none; }
+    header .brand img { width: 32px; height: 32px; border-radius: 3px; }
+    header .brand span { font-size: 0.9rem; font-weight: 600; letter-spacing: -0.01em; }
+    header nav { display: flex; align-items: center; gap: 1.5rem; font-size: 0.875rem; color: var(--muted); }
+    header nav a { text-decoration: none; }
+    header nav a:hover, header nav a.active { color: var(--fg); }
+
+    main { max-width: 720px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+    .meta { font-size: 0.8rem; color: var(--muted); font-family: monospace; margin-bottom: 0.75rem; }
+    h1 { font-size: 2.1rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; margin: 0 0 1.5rem; }
+    h2 { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.01em; margin: 2.5rem 0 1rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin: 1.75rem 0 0.6rem; }
+    p { color: #e4e4e7; margin: 0 0 1.1rem; }
+    p.lead { font-size: 1.1rem; color: var(--fg); }
+    ul, ol { color: #e4e4e7; padding-left: 1.3rem; margin: 0 0 1.1rem; }
+    li { margin-bottom: 0.4rem; }
+    code { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85em; }
+    pre { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto; font-size: 0.85rem; }
+    pre code { border: none; padding: 0; background: none; }
+    a.inline-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+    .takeaways {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin: 1.5rem 0 2.5rem;
+    }
+    .takeaways p.label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.7rem; color: var(--accent); font-weight: 600; margin: 0 0 0.75rem; }
+    .takeaways ul { margin: 0; }
+    .table-wrap { overflow-x: auto; margin: 0 0 1.1rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
+    th { color: var(--muted); font-weight: 600; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+    .cta {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin: 2.5rem 0;
+      text-align: center;
+    }
+    .cta a {
+      display: inline-block;
+      margin-top: 0.75rem;
+      background: var(--fg);
+      color: #000;
+      font-weight: 600;
+      padding: 0.55rem 1.25rem;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 0.75rem;
+      font-size: 0.75rem; color: var(--muted);
+    }
+    footer a { text-decoration: none; margin-left: 1rem; }
+    footer a:hover { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">
+      <img src="/opencontext-logo.png" alt="open-context" />
+      <span>open-context</span>
+    </a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/blog/" class="active">Blog</a>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <div class="meta">October 15, 2026 · 6 min read</div>
+      <h1>How open-context Tests 15 Database Backends With One Suite</h1>
+
+      <p class="lead">
+        open-context's MCP context store runs on 15 different databases, and every one of them is
+        checked against the exact same file: <code>tests/store/conformance.ts</code>, roughly 50
+        tests that define what "correct" means for a context store. A backend either passes all of
+        them or it isn't shipped as supported — the tests are the contract, not the documentation.
+      </p>
+
+      <div class="takeaways">
+        <p class="label">Key takeaways</p>
+        <ul>
+          <li>One conformance suite of ~50 tests is the single definition of correct behavior for every open-context context store backend, covering contexts, bubbles, search, and lifecycle.</li>
+          <li><code>npm test</code> runs it for free against <code>json</code>, <code>sqlite</code>, and <code>memory</code> — no external services needed, since those only need a temp file or RAM.</li>
+          <li>The other 12 backends run through <code>npm run test:backends</code> once their connection string is set, usually against the services defined in <code>docker-compose.test.yml</code>.</li>
+          <li>The suite encodes concrete invariants: <code>createdAt</code>-then-<code>id</code> ordering, case-insensitive substring search, <code>undefined</code> (never <code>null</code>) for unset optional fields, and read-your-writes consistency.</li>
+          <li>If a backend can't satisfy a test, the backend is documented as limited — the suite itself is never weakened to make it pass.</li>
+        </ul>
+      </div>
+
+      <h2>Why one interface across 15 backends needs one contract</h2>
+      <p>
+        open-context's MCP server lets Claude save and recall context through six tools —
+        <code>save_context</code>, <code>recall_context</code>, <code>list_contexts</code>,
+        <code>search_contexts</code>, <code>update_context</code>, <code>delete_context</code> — and
+        none of those tools know or care which database is underneath. That only works if every
+        backend genuinely behaves the same way. A context store that silently drops a tag, returns
+        <code>null</code> where another returns <code>undefined</code>, or sorts results in a
+        different order isn't a drop-in replacement, it's a bug waiting to surface the first time
+        someone switches backends. The conformance suite exists to catch exactly that class of bug
+        before a user does.
+      </p>
+
+      <h2>What the suite actually checks</h2>
+      <p>
+        <code>tests/store/conformance.ts</code> exports <code>runStoreConformance()</code>, a function
+        that takes a harness — <code>setup</code>, <code>create</code>, <code>teardown</code> — and
+        runs the full behavioral contract against whatever adapter the harness hands back. It's
+        organized into 13 groups that mirror the
+        <a class="inline-link" href="/blog/mcp-tools-reference/">store's own methods</a>:
+      </p>
+      <ul>
+        <li><strong>Contexts</strong> — <code>saveContext</code>, <code>getContext</code>, <code>recallContext</code>, <code>searchContexts</code>, <code>listContexts</code>, <code>updateContext</code>, <code>deleteContext</code></li>
+        <li><strong>Bubbles</strong> — <code>createBubble</code>, <code>listBubbles</code>/<code>getBubble</code>, <code>listContextsByBubble</code>, <code>updateBubble</code>, <code>deleteBubble</code></li>
+        <li><strong>Lifecycle</strong> — connecting, closing, and reconnecting without losing data</li>
+      </ul>
+      <p>
+        Individual tests get specific: round-tripping content with embedded quotes and a literal
+        <code>DROP TABLE</code> string (so every SQL driver has to prove it's actually parameterizing,
+        not concatenating), round-tripping Unicode, and reopening a fresh adapter instance mid-test
+        to prove a write really persisted rather than living only in an in-memory cache.
+      </p>
+
+      <h2>How it runs against three different adapter families</h2>
+      <p>
+        open-context doesn't implement all 15 backends separately. As the project's own
+        <a class="inline-link" href="/blog/byodb-architecture-overview/">BYODB architecture overview</a>
+        explains, CRUD logic is written once per family — a shared <code>adapters/sql.ts</code> for
+        <code>sqlite</code>, <code>libsql</code>, <code>d1</code>, <code>duckdb</code>,
+        <code>postgres</code>, <code>cloudsql</code>, <code>mysql</code>, and <code>mssql</code>, each
+        contributing only a small <code>Dialect</code> (placeholder style, DDL, string concat);
+        a shared <code>adapters/document.ts</code> for <code>memory</code>, <code>mongodb</code>,
+        <code>redis</code>, <code>firestore</code>, and <code>dynamodb</code>, each contributing a
+        <code>DocumentDriver</code>; and a bespoke <code>adapters/surreal.ts</code> for
+        <code>surrealdb</code>. The conformance suite runs against the family implementation, not
+        against each individual database — which means passing it for <code>sqlite</code> already
+        proves most of what <code>postgres</code> and <code>mysql</code> need, since they share the
+        same code path and differ only in their <code>Dialect</code>.
+      </p>
+      <p>
+        That's also why the suite runs in two tiers. <code>npm test</code> exercises <code>json</code>
+        (a flat file), <code>sqlite</code> (a temp file), and <code>memory</code> (plain RAM) on every
+        run, including CI, because none of them need a service running. The remaining 12 need a real
+        database, so <code>tests/store/backends.test.ts</code> skips each one unless its connection
+        string is present in the environment:
+      </p>
+      <pre><code>docker compose -f docker-compose.test.yml up -d
+OPENCONTEXT_TEST_POSTGRES_URL="postgres://opencontext:opencontext@127.0.0.1:55432/opencontext" \
+  npm run test:backends
+docker compose -f docker-compose.test.yml down -v</code></pre>
+      <p>
+        <code>docker-compose.test.yml</code> spins up Postgres, MySQL, and SQL Server (among others)
+        with health checks, so the same 50 tests run against a live engine instead of a mock.
+      </p>
+
+      <h2>The invariants that actually matter</h2>
+      <p>
+        A handful of rules in the suite aren't obvious from the interface alone, which is exactly why
+        they're enforced in code instead of left to each driver's judgment:
+      </p>
+      <ul>
+        <li><strong>Ordering</strong> — every list method returns results <code>createdAt ASC, id ASC</code>, identically across backends, including ones like DynamoDB that don't sort natively.</li>
+        <li><strong>Search semantics</strong> — <code>recallContext</code> and <code>searchContexts</code> do a case-insensitive substring match over content, tags, and source, and <code>searchContexts</code> requires every term to match, not just one.</li>
+        <li><strong>Absent vs. null</strong> — an unset <code>bubbleId</code> or <code>description</code> must come back <code>undefined</code>, never <code>null</code>. Several document drivers need explicit configuration to honor this, since their native clients default to storing and returning <code>null</code>.</li>
+        <li><strong>Read-your-writes</strong> — a write has to be visible to the very next read. DynamoDB in particular needs <code>ConsistentRead: true</code> set, or its default eventually-consistent reads can fail this test intermittently.</li>
+      </ul>
+      <p>
+        None of these are edge cases a casual integration test would catch. They surface specifically
+        because the same 50 assertions run against every backend, so a driver that technically "works"
+        but diverges on one of these points fails the exact same way <code>sqlite</code> would if it
+        made the same mistake.
+      </p>
+
+      <h2>When a backend can't pass</h2>
+      <p>
+        The project's own guidance is explicit about which direction the fix goes: the conformance
+        suite "must never be weakened to make a backend pass — if a backend cannot satisfy it, that
+        is a finding to document, not a test to relax." That's a meaningful constraint to hold,
+        because the easy failure mode for any shared-contract test suite is death by a thousand
+        exceptions — one <code>skip()</code> for Redis here, one loosened assertion for Firestore
+        there — until the suite no longer actually guarantees interchangeability for anyone. Treating
+        a failed test as a backend limitation instead keeps the contract meaningful: if
+        <code>postgres</code> passes all 50 tests and <code>mysql</code> passes all 50 tests, a user
+        can actually trust that switching between them with <code>db migrate</code> won't change
+        behavior underneath their saved contexts.
+      </p>
+      <p>
+        This pattern — one reusable suite, a thin per-implementation adapter, run against both fakes
+        and real services — isn't unique to open-context. dbt Labs proposed the same shape for
+        <a class="inline-link" href="https://github.com/dbt-labs/dbt-core/issues/4812" target="_blank" rel="noopener noreferrer">dbt-core's database adapters</a>:
+        bundle shared test cases into a package so adapter maintainers prove behavior matches without
+        copy-pasting tests per database. It's the standard way to make "drop-in replacement" a
+        verifiable claim instead of a marketing one.
+      </p>
+
+      <h2>Adding a backend without breaking the contract</h2>
+      <p>
+        Adding a 16th backend to open-context means wiring it into an existing family, not building a
+        parser for the conformance suite itself. The short version: add the scheme to
+        <code>DbScheme</code> and <code>SUPPORTED_SCHEMES</code>, parse any backend-specific DSN
+        fields, write a <code>Dialect</code> or <code>DocumentDriver</code>, register it in
+        <code>ADAPTERS</code> and the <code>build()</code> switch, load the client library with
+        <code>importOptional()</code> so a missing package produces an install instruction instead of
+        a crash, and add it as an optional peer dependency. Then the suite does the verification work:
+        run it against the new backend until all 50 tests pass, and only then is it a backend
+        open-context actually supports — not one that merely compiles.
+      </p>
+
+      <div class="cta">
+        <p style="margin:0; color: var(--muted);">Point open-context's MCP server at any of its 15 supported databases.</p>
+        <a href="/">Get started with open-context →</a>
+      </div>
+
+      <h2>FAQ</h2>
+
+      <h3>What is the open-context conformance suite?</h3>
+      <p>It's a single file, <code>tests/store/conformance.ts</code>, containing about 50 tests that every one of open-context's 15 database backends must pass. It is the only definition of correct behavior for the context store — not a README, not a comment, the tests themselves.</p>
+
+      <h3>How many database backends does open-context support?</h3>
+      <p>Fifteen: json, sqlite, libsql, d1, duckdb, postgres, cloudsql, mysql, mssql, memory, mongodb, redis, firestore, dynamodb, and surrealdb. They share three adapter implementations — SQL, document/KV, and a bespoke SurrealDB adapter — rather than fifteen separate codebases.</p>
+
+      <h3>Do I need to run every backend's database to test open-context's store?</h3>
+      <p><code>npm test</code> runs the full conformance suite against json, sqlite, and memory with zero external services, since those need only a temp file or RAM. The other 12 backends run via <code>npm run test:backends</code> once their connection strings are set, typically against the services in <code>docker-compose.test.yml</code>.</p>
+
+      <h3>What happens if a backend can't pass all 50 conformance tests?</h3>
+      <p>The test stays as written. If a backend genuinely cannot satisfy an invariant, that becomes a documented limitation of that backend, not a reason to loosen the suite — weakening the contract to fit one backend would let every other backend regress silently.</p>
+
+      <h3>Does the conformance suite check credentials or connection strings?</h3>
+      <p>Indirectly, through the adapter contract: every driver receives <code>dsn.canonical</code>, never <code>dsn.raw</code>, and everything user-visible about a connection string is expected to go through <code>redactDsn()</code> so passwords never leak into logs or error messages.</p>
+    </article>
+  </main>
+
+  <footer>
+    <span>open-context.dev — open source, self-hosted</span>
+    <div>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a href="https://hub.docker.com/r/adityakarnam/opencontext" target="_blank" rel="noopener noreferrer">Docker Hub</a>
+    </div>
+  </footer>
+</body>
+</html>

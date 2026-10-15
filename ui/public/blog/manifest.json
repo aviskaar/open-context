@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "conformance-suite-contract",
+      "title": "How open-context Tests 15 Database Backends With One Suite",
+      "publishedAt": "2026-10-15",
+      "topicTag": "conformance-suite-contract"
+    },
+    {
       "slug": "in-memory-mcp-store-testing",
       "title": "In-Memory MCP Context Store: Fast Local Testing Guide",
       "publishedAt": "2026-10-13",
@@ -206,10 +212,6 @@
     }
   ],
   "backlog": [
-    {
-      "topicTag": "conformance-suite-contract",
-      "workingTitle": "The Conformance Suite: How open-context Keeps 15 Backends Honest"
-    },
     {
       "topicTag": "mcp-client-comparison",
       "workingTitle": "Claude Desktop vs. Claude Code MCP Config: What's Different"
