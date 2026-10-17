@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "claude-code-vs-claude-desktop-mcp-config",
+      "title": "Claude Desktop vs. Claude Code MCP Config: What's Different",
+      "publishedAt": "2026-10-17",
+      "topicTag": "mcp-client-comparison"
+    },
+    {
       "slug": "conformance-suite-contract",
       "title": "How open-context Tests 15 Database Backends With One Suite",
       "publishedAt": "2026-10-15",
@@ -212,10 +218,6 @@
     }
   ],
   "backlog": [
-    {
-      "topicTag": "mcp-client-comparison",
-      "workingTitle": "Claude Desktop vs. Claude Code MCP Config: What's Different"
-    },
     {
       "topicTag": "contexts-vs-bubbles-tagging",
       "workingTitle": "Tags vs. Bubbles: Two Ways to Organize open-context Memory"

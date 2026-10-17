@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="/opencontext-logo.png" />
+  <title>Claude Desktop vs. Claude Code MCP Config: What's Different</title>
+  <meta name="description" content="Claude Code and Claude Desktop store MCP server settings in different files with different scopes, so a server added in one app never shows up in the other." />
+  <link rel="canonical" href="https://open-context.dev/blog/claude-code-vs-claude-desktop-mcp-config/" />
+  <meta property="og:title" content="Claude Desktop vs. Claude Code MCP Config: What's Different" />
+  <meta property="og:description" content="Claude Code and Claude Desktop store MCP server settings in different files with different scopes, so a server added in one app never shows up in the other." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://open-context.dev/blog/claude-code-vs-claude-desktop-mcp-config/" />
+  <meta property="og:image" content="https://open-context.dev/opencontext-logo.png" />
+  <meta property="article:published_time" content="2026-10-17" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Claude Desktop vs. Claude Code MCP Config: What's Different" />
+  <meta name="twitter:description" content="Claude Code and Claude Desktop keep separate MCP configs — here's exactly where each one lives and how to set up the same server in both." />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BlogPosting",
+        "headline": "Claude Desktop vs. Claude Code MCP Config: What's Different",
+        "description": "Claude Code and Claude Desktop store MCP server settings in different files with different scopes, so a server added in one app never shows up in the other.",
+        "datePublished": "2026-10-17",
+        "dateModified": "2026-10-17",
+        "mainEntityOfPage": { "@type": "WebPage", "@id": "https://open-context.dev/blog/claude-code-vs-claude-desktop-mcp-config/" },
+        "image": "https://open-context.dev/opencontext-logo.png",
+        "author": { "@type": "Organization", "name": "open-context", "url": "https://open-context.dev/" },
+        "publisher": {
+          "@type": "Organization",
+          "name": "open-context",
+          "logo": { "@type": "ImageObject", "url": "https://open-context.dev/opencontext-logo.png" }
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Do I need to configure open-context twice if I use both Claude Code and Claude Desktop?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Claude Code and Claude Desktop read separate configuration files, so adding the open-context MCP server in one does not make it available in the other — you add the same command/args entry in both places, or use claude mcp add-from-claude-desktop to copy it across." }
+          },
+          {
+            "@type": "Question",
+            "name": "Where exactly does Claude Desktop store its MCP config?",
+            "acceptedAnswer": { "@type": "Answer", "text": "On macOS it's ~/Library/Application Support/Claude/claude_desktop_config.json; on Windows it's %APPDATA%\\Claude\\claude_desktop_config.json. The Settings → Developer → Edit Config button in the app opens the exact file it reads, which is the safest way to find it." }
+          },
+          {
+            "@type": "Question",
+            "name": "What's the difference between local, project, and user scope in Claude Code?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Local scope (the default) registers a server only for you, in the current project, inside ~/.claude.json. Project scope writes to a .mcp.json file in the repo root that you can commit so teammates get the same servers. User scope writes to the top-level mcpServers key in ~/.claude.json and makes the server available in every project you open." }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I copy my Claude Desktop MCP servers into Claude Code automatically?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes, on macOS and WSL. Running claude mcp add-from-claude-desktop reads your existing claude_desktop_config.json and registers the same servers with the Claude Code CLI, so you don't have to retype each entry." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does the open-context MCP server behave differently in Claude Code versus Claude Desktop?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. The same save_context, recall_context, list_contexts, search_contexts, update_context, and delete_context tools run against the same local store either way. Only the configuration file and scope you register the server in differ between the two apps." }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <style>
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Regular-Trial-BF63f6cbd970ee9.otf') format('opentype'); font-weight: 400; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Medium-Trial-BF63f6cbdb24b6d.otf') format('opentype'); font-weight: 500; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Bold-Trial-BF63f6cbda1877f.otf') format('opentype'); font-weight: 700; font-style: normal; }
+
+    :root {
+      --bg: #000000;
+      --card: #0a0a0a;
+      --border: #262626;
+      --fg: #fafafa;
+      --muted: #a1a1aa;
+      --accent: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Styrene A', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.7;
+    }
+    a { color: inherit; }
+    header {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; gap: 1.5rem;
+      padding: 0.9rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.9);
+      backdrop-filter: blur(6px);
+    }
+    header .brand { display: flex; align-items: center; gap: 0.5rem; margin-right: auto; text-decoration: none; }
+    header .brand img { width: 32px; height: 32px; border-radius: 3px; }
+    header .brand span { font-size: 0.9rem; font-weight: 600; letter-spacing: -0.01em; }
+    header nav { display: flex; align-items: center; gap: 1.5rem; font-size: 0.875rem; color: var(--muted); }
+    header nav a { text-decoration: none; }
+    header nav a:hover, header nav a.active { color: var(--fg); }
+
+    main { max-width: 720px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+    .meta { font-size: 0.8rem; color: var(--muted); font-family: monospace; margin-bottom: 0.75rem; }
+    h1 { font-size: 2.1rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; margin: 0 0 1.5rem; }
+    h2 { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.01em; margin: 2.5rem 0 1rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin: 1.75rem 0 0.6rem; }
+    p { color: #e4e4e7; margin: 0 0 1.1rem; }
+    p.lead { font-size: 1.1rem; color: var(--fg); }
+    ul, ol { color: #e4e4e7; padding-left: 1.3rem; margin: 0 0 1.1rem; }
+    li { margin-bottom: 0.4rem; }
+    code { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85em; }
+    pre { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto; font-size: 0.85rem; }
+    pre code { border: none; padding: 0; background: none; }
+    a.inline-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+    .takeaways {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin: 1.5rem 0 2.5rem;
+    }
+    .takeaways p.label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.7rem; color: var(--accent); font-weight: 600; margin: 0 0 0.75rem; }
+    .takeaways ul { margin: 0; }
+    .table-wrap { overflow-x: auto; margin: 0 0 1.1rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
+    th { color: var(--muted); font-weight: 600; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+    .cta {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin: 2.5rem 0;
+      text-align: center;
+    }
+    .cta a {
+      display: inline-block;
+      margin-top: 0.75rem;
+      background: var(--fg);
+      color: #000;
+      font-weight: 600;
+      padding: 0.55rem 1.25rem;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 0.75rem;
+      font-size: 0.75rem; color: var(--muted);
+    }
+    footer a { text-decoration: none; margin-left: 1rem; }
+    footer a:hover { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">
+      <img src="/opencontext-logo.png" alt="open-context" />
+      <span>open-context</span>
+    </a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/blog/" class="active">Blog</a>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <div class="meta">October 17, 2026 · 6 min read</div>
+      <h1>Claude Desktop vs. Claude Code MCP Config: What's Different</h1>
+
+      <p class="lead">
+        Claude Code and Claude Desktop read MCP server settings from completely separate files, so
+        adding a server in one app never makes it appear in the other. Claude Code writes to
+        <code>.mcp.json</code> or <code>~/.claude.json</code>, depending on which of its three scopes
+        you use, while Claude Desktop keeps one global <code>claude_desktop_config.json</code> per
+        machine. If you've connected <a class="inline-link" href="/">open-context</a>'s MCP server to
+        one app and Claude can't find it in the other, this is why.
+      </p>
+
+      <div class="takeaways">
+        <p class="label">Key takeaways</p>
+        <ul>
+          <li>Claude Code and Claude Desktop read separate MCP configuration files — a server registered in one is invisible to the other.</li>
+          <li>Claude Code supports three scopes: <strong>local</strong> (private, this project only, the default), <strong>project</strong> (<code>.mcp.json</code>, committed for the whole team), and <strong>user</strong> (private, every project).</li>
+          <li>Claude Desktop has exactly one config file per OS — no scopes, no per-project behavior.</li>
+          <li><code>claude mcp add-from-claude-desktop</code> copies existing Desktop server entries into Claude Code on macOS and WSL.</li>
+          <li>open-context's MCP server entry is identical JSON in both apps — only the surrounding file and scope change.</li>
+        </ul>
+      </div>
+
+      <h2>Two apps, two configs, zero overlap</h2>
+      <p>
+        Claude Code (the CLI and IDE tool) and Claude Desktop (the standalone chat app) are built and
+        shipped separately, and they don't share settings. Each one maintains its own list of MCP
+        servers, in its own file, on its own schedule. That split is easy to miss because the JSON
+        shape of a server entry — a <code>command</code>, some <code>args</code>, maybe an
+        <code>env</code> block — looks identical in both. It's the file it lives in, and what that
+        file means for who can see it, that differs.
+      </p>
+      <p>
+        For a project like <a class="inline-link" href="/">open-context</a>, which ships setup
+        instructions for both apps, this is the single most common point of confusion: someone follows
+        the Claude Code steps, confirms the server is connected, then opens Claude Desktop later and
+        finds no trace of it.
+      </p>
+
+      <h2>How Claude Code stores MCP servers</h2>
+      <p>
+        Claude Code resolves servers from one of three scopes, set when you run
+        <code>claude mcp add</code> (or by hand-editing the file):
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Scope</th><th>File</th><th>Visible to</th></tr></thead>
+          <tbody>
+            <tr><td><code>local</code></td><td><code>~/.claude.json</code>, under this project's entry</td><td>Only you, only this project (default)</td></tr>
+            <tr><td><code>project</code></td><td><code>.mcp.json</code> at the project root</td><td>Anyone who clones the repo</td></tr>
+            <tr><td><code>user</code></td><td><code>~/.claude.json</code>, top-level <code>mcpServers</code> key</td><td>Only you, every project</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        A server's scope is fixed at add time — changing it means removing the entry and re-adding it
+        with a different <code>--scope</code> flag. Run <code>claude mcp get &lt;name&gt;</code> to see
+        which scope currently holds a given server.
+      </p>
+
+      <h3>Register open-context once, for every project</h3>
+      <p>
+        If you only use open-context's MCP server for yourself, <code>user</code> scope is the right
+        choice — register it once and it's active everywhere you run Claude Code:
+      </p>
+      <pre><code>{
+  "mcpServers": {
+    "open-context": {
+      "command": "node",
+      "args": ["/path/to/opencontext/dist/mcp/index.js"]
+    }
+  }
+}</code></pre>
+      <p>
+        Paste that into the top-level <code>mcpServers</code> key of <code>~/.claude.json</code>, or
+        build the equivalent with the CLI:
+      </p>
+      <pre><code>claude mcp add --scope user open-context -- node /path/to/opencontext/dist/mcp/index.js</code></pre>
+
+      <h3>Share it with a team via project scope</h3>
+      <p>
+        If a team keeps shared conventions in open-context and wants everyone's Claude Code to pick up
+        the same server automatically, commit a <code>.mcp.json</code> at the project root instead —
+        the same JSON block, just checked into version control:
+      </p>
+      <pre><code>claude mcp add --scope project open-context -- node /path/to/opencontext/dist/mcp/index.js</code></pre>
+      <p>
+        The first time a teammate opens the project, Claude Code prompts them to approve the server
+        before it runs — a project file can't silently launch a process on someone else's machine.
+      </p>
+
+      <h2>How Claude Desktop stores MCP servers</h2>
+      <p>
+        Claude Desktop has no scopes at all. There's one file, and whatever servers it lists are
+        available in every conversation on that machine:
+      </p>
+      <ul>
+        <li><strong>macOS:</strong> <code>~/Library/Application Support/Claude/claude_desktop_config.json</code></li>
+        <li><strong>Windows:</strong> <code>%APPDATA%\Claude\claude_desktop_config.json</code></li>
+      </ul>
+      <p>
+        The safest way to find the exact file your installed app reads is Settings → Developer →
+        Edit Config inside Claude Desktop itself, rather than guessing the path — installer variants
+        have been known to disagree with the documented default. open-context's Docker-based setup
+        for Desktop looks like this, and you restart the app after saving:
+      </p>
+      <pre><code>{
+  "mcpServers": {
+    "open-context": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "-v", "opencontext-data:/root/.opencontext",
+               "adityakarnam/open-context:latest", "node", "dist/mcp/index.js"]
+    }
+  }
+}</code></pre>
+
+      <h2>Moving servers between the two apps</h2>
+      <p>
+        If you already configured open-context (or anything else) in Claude Desktop and want the same
+        servers in Claude Code, you don't have to retype the JSON. On macOS and WSL, run:
+      </p>
+      <pre><code>claude mcp add-from-claude-desktop</code></pre>
+      <p>
+        This reads your existing <code>claude_desktop_config.json</code> and registers each server
+        with the Claude Code CLI at local scope, which you can then re-add at <code>user</code> or
+        <code>project</code> scope if you want it everywhere. There's no equivalent command in the
+        other direction — Claude Desktop has no CLI, so moving a Claude Code server into it means
+        copying the JSON by hand into <code>claude_desktop_config.json</code>.
+      </p>
+
+      <h2>Which one should you use for open-context?</h2>
+      <p>
+        If you're the only person touching a project and want open-context's memory everywhere you run
+        Claude Code, use <code>user</code> scope. If a team shares a repo and should all get the same
+        MCP setup without a Slack message explaining it, commit <code>.mcp.json</code> at
+        <code>project</code> scope. If you mainly live in the Claude Desktop chat app rather than the
+        CLI, the Docker entry above in <code>claude_desktop_config.json</code> is the one that matters
+        — and nothing about open-context's tools (<code>save_context</code>, <code>recall_context</code>,
+        <code>search_contexts</code>, and the rest) changes depending on which app calls them. For the
+        full list of what those tools do and when Claude reaches for each one, see
+        <a class="inline-link" href="/blog/mcp-tools-reference/">the MCP tools reference</a>; for first-time
+        setup end to end, see
+        <a class="inline-link" href="/blog/mcp-persistent-memory/">the persistent memory setup guide</a>.
+      </p>
+
+      <div class="cta">
+        <p style="margin:0; color: var(--muted);">Give Claude persistent memory in Code, Desktop, or both.</p>
+        <a href="/">Get started with open-context →</a>
+      </div>
+
+      <h2>FAQ</h2>
+
+      <h3>Do I need to configure open-context twice if I use both Claude Code and Claude Desktop?</h3>
+      <p>Yes. Claude Code and Claude Desktop read separate configuration files, so adding the open-context MCP server in one does not make it available in the other — you add the same command/args entry in both places, or use <code>claude mcp add-from-claude-desktop</code> to copy it across.</p>
+
+      <h3>Where exactly does Claude Desktop store its MCP config?</h3>
+      <p>On macOS it's <code>~/Library/Application Support/Claude/claude_desktop_config.json</code>; on Windows it's <code>%APPDATA%\Claude\claude_desktop_config.json</code>. The Settings → Developer → Edit Config button in the app opens the exact file it reads, which is the safest way to find it.</p>
+
+      <h3>What's the difference between local, project, and user scope in Claude Code?</h3>
+      <p>Local scope (the default) registers a server only for you, in the current project, inside <code>~/.claude.json</code>. Project scope writes to a <code>.mcp.json</code> file in the repo root that you can commit so teammates get the same servers. User scope writes to the top-level <code>mcpServers</code> key in <code>~/.claude.json</code> and makes the server available in every project you open.</p>
+
+      <h3>Can I copy my Claude Desktop MCP servers into Claude Code automatically?</h3>
+      <p>Yes, on macOS and WSL. Running <code>claude mcp add-from-claude-desktop</code> reads your existing <code>claude_desktop_config.json</code> and registers the same servers with the Claude Code CLI, so you don't have to retype each entry.</p>
+
+      <h3>Does the open-context MCP server behave differently in Claude Code versus Claude Desktop?</h3>
+      <p>No. The same <code>save_context</code>, <code>recall_context</code>, <code>list_contexts</code>, <code>search_contexts</code>, <code>update_context</code>, and <code>delete_context</code> tools run against the same local store either way. Only the configuration file and scope you register the server in differ between the two apps.</p>
+    </article>
+  </main>
+
+  <footer>
+    <span>open-context.dev — open source, self-hosted</span>
+    <div>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a href="https://hub.docker.com/r/adityakarnam/opencontext" target="_blank" rel="noopener noreferrer">Docker Hub</a>
+    </div>
+  </footer>
+</body>
+</html>
