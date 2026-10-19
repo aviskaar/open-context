@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "tags-vs-bubbles",
+      "title": "Tags vs. Bubbles: Two Ways to Organize open-context Memory",
+      "publishedAt": "2026-10-19",
+      "topicTag": "contexts-vs-bubbles-tagging"
+    },
+    {
       "slug": "claude-code-vs-claude-desktop-mcp-config",
       "title": "Claude Desktop vs. Claude Code MCP Config: What's Different",
       "publishedAt": "2026-10-17",
@@ -218,10 +224,6 @@
     }
   ],
   "backlog": [
-    {
-      "topicTag": "contexts-vs-bubbles-tagging",
-      "workingTitle": "Tags vs. Bubbles: Two Ways to Organize open-context Memory"
-    },
     {
       "topicTag": "ollama-local-llm-privacy",
       "workingTitle": "Why open-context Uses Ollama Instead of a Hosted LLM API"
