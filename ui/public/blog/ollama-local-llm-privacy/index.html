@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="/opencontext-logo.png" />
+  <title>Why open-context Uses Ollama Instead of a Hosted LLM API</title>
+  <meta name="description" content="open-context runs preference analysis through a local Ollama model instead of a hosted LLM API, so your exported chat history never leaves a server you control." />
+  <link rel="canonical" href="https://open-context.dev/blog/ollama-local-llm-privacy/" />
+  <meta property="og:title" content="Why open-context Uses Ollama Instead of a Hosted LLM API" />
+  <meta property="og:description" content="open-context runs preference analysis through a local Ollama model instead of a hosted LLM API, so your exported chat history never leaves a server you control." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://open-context.dev/blog/ollama-local-llm-privacy/" />
+  <meta property="og:image" content="https://open-context.dev/opencontext-logo.png" />
+  <meta property="article:published_time" content="2026-10-21" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Why open-context Uses Ollama Instead of a Hosted LLM API" />
+  <meta name="twitter:description" content="Why open-context's preference analysis runs on local Ollama models, not a hosted LLM API — and what that means for your exported chat history." />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BlogPosting",
+        "headline": "Why open-context Uses Ollama Instead of a Hosted LLM API",
+        "description": "open-context runs preference analysis through a local Ollama model instead of a hosted LLM API, so your exported chat history never leaves a server you control.",
+        "datePublished": "2026-10-21",
+        "dateModified": "2026-10-21",
+        "mainEntityOfPage": { "@type": "WebPage", "@id": "https://open-context.dev/blog/ollama-local-llm-privacy/" },
+        "image": "https://open-context.dev/opencontext-logo.png",
+        "author": { "@type": "Organization", "name": "open-context", "url": "https://open-context.dev/" },
+        "publisher": {
+          "@type": "Organization",
+          "name": "open-context",
+          "logo": { "@type": "ImageObject", "url": "https://open-context.dev/opencontext-logo.png" }
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Does open-context ever send my chat history to OpenAI, Anthropic, or another hosted API?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. Today, open-context's only AI analysis backend is Ollama, and it only talks to the Ollama host you configure (locally by default, or a remote server you control via --ollama-host). It has no built-in code path to a hosted LLM API." }
+          },
+          {
+            "@type": "Question",
+            "name": "What exactly gets sent to Ollama during analysis?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Your conversation text, capped at roughly 100,000 tokens (about 400,000 characters) per run, plus a prompt template asking for a preferences or memory summary. Nothing else about your machine or account is transmitted." }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I guarantee zero network calls during conversion?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Running the CLI with --skip-preferences produces the full markdown conversion of your conversations without calling Ollama or anything else — the pipeline falls back to a basic, non-AI preferences and memory summary generated entirely offline." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is Ollama itself sending my data back to a company?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. Ollama is open source software that runs model inference on the machine or server you install it on. Once a model is pulled locally, generating a response does not require a call back to ollama.com or any other third party." }
+          },
+          {
+            "@type": "Question",
+            "name": "Will open-context ever support a hosted API like Claude's instead of Ollama?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Not yet. The project's own FAQ notes that Claude API support may be added later, but Ollama remains the default specifically because it keeps the analysis step local — any hosted option would need to be explicitly opted into, not the default path." }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <style>
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Regular-Trial-BF63f6cbd970ee9.otf') format('opentype'); font-weight: 400; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Medium-Trial-BF63f6cbdb24b6d.otf') format('opentype'); font-weight: 500; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Bold-Trial-BF63f6cbda1877f.otf') format('opentype'); font-weight: 700; font-style: normal; }
+
+    :root {
+      --bg: #000000;
+      --card: #0a0a0a;
+      --border: #262626;
+      --fg: #fafafa;
+      --muted: #a1a1aa;
+      --accent: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Styrene A', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.7;
+    }
+    a { color: inherit; }
+    header {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; gap: 1.5rem;
+      padding: 0.9rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.9);
+      backdrop-filter: blur(6px);
+    }
+    header .brand { display: flex; align-items: center; gap: 0.5rem; margin-right: auto; text-decoration: none; }
+    header .brand img { width: 32px; height: 32px; border-radius: 3px; }
+    header .brand span { font-size: 0.9rem; font-weight: 600; letter-spacing: -0.01em; }
+    header nav { display: flex; align-items: center; gap: 1.5rem; font-size: 0.875rem; color: var(--muted); }
+    header nav a { text-decoration: none; }
+    header nav a:hover, header nav a.active { color: var(--fg); }
+
+    main { max-width: 720px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+    .meta { font-size: 0.8rem; color: var(--muted); font-family: monospace; margin-bottom: 0.75rem; }
+    h1 { font-size: 2.1rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; margin: 0 0 1.5rem; }
+    h2 { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.01em; margin: 2.5rem 0 1rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin: 1.75rem 0 0.6rem; }
+    p { color: #e4e4e7; margin: 0 0 1.1rem; }
+    p.lead { font-size: 1.1rem; color: var(--fg); }
+    ul, ol { color: #e4e4e7; padding-left: 1.3rem; margin: 0 0 1.1rem; }
+    li { margin-bottom: 0.4rem; }
+    code { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85em; }
+    pre { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto; font-size: 0.85rem; }
+    pre code { border: none; padding: 0; background: none; }
+    a.inline-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+    .takeaways {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin: 1.5rem 0 2.5rem;
+    }
+    .takeaways p.label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.7rem; color: var(--accent); font-weight: 600; margin: 0 0 0.75rem; }
+    .takeaways ul { margin: 0; }
+    .table-wrap { overflow-x: auto; margin: 0 0 1.1rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
+    th { color: var(--muted); font-weight: 600; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+    .cta {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin: 2.5rem 0;
+      text-align: center;
+    }
+    .cta a {
+      display: inline-block;
+      margin-top: 0.75rem;
+      background: var(--fg);
+      color: #000;
+      font-weight: 600;
+      padding: 0.55rem 1.25rem;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 0.75rem;
+      font-size: 0.75rem; color: var(--muted);
+    }
+    footer a { text-decoration: none; margin-left: 1rem; }
+    footer a:hover { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">
+      <img src="/opencontext-logo.png" alt="open-context" />
+      <span>open-context</span>
+    </a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/blog/" class="active">Blog</a>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <div class="meta">October 21, 2026 · 6 min read</div>
+      <h1>Why open-context Uses Ollama Instead of a Hosted LLM API</h1>
+
+      <p class="lead">
+        open-context uses Ollama instead of a hosted LLM API because its AI preference-analysis step
+        takes your entire exported chat history as input — the most personal text you've typed to
+        another assistant — and the only way to avoid trusting a third party's retention policy with
+        that input is to not send it to one. Ollama runs the model on infrastructure you choose, local
+        or remote, so the single network call open-context's analysis can make goes to an address you
+        configured, not a vendor's servers. Skip AI analysis entirely with <code>--skip-preferences</code>
+        and the whole pipeline makes no network calls at all.
+      </p>
+
+      <div class="takeaways">
+        <p class="label">Key takeaways</p>
+        <ul>
+          <li>open-context's <code>OllamaPreferenceAnalyzer</code> only ever calls the Ollama host you configure — there is no built-in code path to a hosted LLM API.</li>
+          <li><code>--skip-preferences</code> produces a full markdown conversion with zero network calls; AI analysis is opt-in, never required.</li>
+          <li>Hosted APIs like OpenAI's exclude API data from model training by default, but still retain prompts and responses for up to 30 days of abuse monitoring — a window local inference skips entirely.</li>
+          <li>Samsung's 2023 internal ban on generative AI tools, triggered after engineers pasted source code into ChatGPT, shows this isn't a hypothetical risk for sensitive text.</li>
+          <li>open-context's own FAQ leaves the door open to a future Claude API option, but Ollama stays the default because it keeps analysis local by design, not by configuration.</li>
+        </ul>
+      </div>
+
+      <h2>What the AI analysis step actually sends somewhere</h2>
+      <p>
+        Most of open-context's pipeline never touches the network. Parsing your ChatGPT
+        <code>conversations.json</code>, normalizing it into the shared schema, and writing markdown
+        files all happen in-process on your machine. The one stage that calls out at all is the
+        optional AI analysis step, implemented in <code>src/analyzers/ollama-preferences.ts</code> as
+        <code>OllamaPreferenceAnalyzer</code>. It defaults to model <code>gpt-oss:20b</code> against
+        <code>http://localhost:11434</code>, checks that Ollama is reachable and the model is pulled,
+        then sends your conversation text — capped at roughly 100,000 tokens, about 400,000 characters,
+        regardless of export size — inside a prompt asking for a preferences or memory summary.
+      </p>
+      <p>
+        That's the entire outbound surface. There's no telemetry, no analytics beacon, and no secondary
+        call to validate a license or fetch a config. If <code>checkOllamaAvailable()</code> can't reach
+        the host, the analyzer throws immediately rather than silently falling back to something else.
+      </p>
+
+      <h2>Why not just call a hosted LLM API?</h2>
+      <p>
+        A hosted API would be simpler to integrate than managing a local model. The tradeoff is that it
+        adds a retention and training-policy dependency to a tool whose entire input is your private
+        conversation history. OpenAI's own developer docs state that data sent to its API has not been
+        used for model training by default since March 2023 unless a customer opts in — but the same
+        docs note that abuse-monitoring logs, which can include prompts and responses, are retained for
+        up to 30 days by default, with a zero-data-retention option available only to approved
+        customers who apply for it.
+        <a class="inline-link" href="https://developers.openai.com/api/docs/guides/your-data" target="_blank" rel="noopener noreferrer">(Source: OpenAI's "Your data" guide)</a>
+      </p>
+      <p>
+        That's a reasonable policy as hosted APIs go. But it still means trusting a third party's
+        retention window, abuse-monitoring exceptions, and approval process for anything stricter.
+        Running Ollama locally removes that dependency instead of just tightening it — there's no
+        retention window to reason about when the request never leaves your network.
+      </p>
+
+      <h2>Real-world incidents show the risk isn't hypothetical</h2>
+      <p>
+        In 2023, Samsung banned employees from using ChatGPT and similar generative AI tools on
+        company devices after engineers uploaded internal source code to the chatbot to check for
+        errors, and others used it to summarize confidential meeting notes. Samsung's stated concern
+        was that these services store input on external servers, where sensitive data is hard to
+        retrieve or delete once submitted.
+        <a class="inline-link" href="https://www.thewrap.com/samsung-bans-staff-ai-use-citing-security-concerns/" target="_blank" rel="noopener noreferrer">(Source: TheWrap)</a>
+        A tool like open-context exists specifically to process years of chat history — the exact
+        category of data that incident was about — which is why its default analysis backend doesn't
+        ask you to make that same tradeoff.
+      </p>
+
+      <h2>How to run open-context with zero network calls</h2>
+      <p>
+        If you want a hard guarantee rather than a policy to trust, skip AI analysis entirely:
+      </p>
+      <pre><code>npm start -- convert path/to/chatgpt-export.zip --skip-preferences</code></pre>
+      <p>
+        This produces the full conversation markdown and a basic, non-AI preferences and memory
+        summary generated from conversation statistics alone (message counts, date ranges, title
+        keywords) — no model call, no network request. If you do want the richer AI-written summaries,
+        point <code>--ollama-host</code> at infrastructure you control, including a remote GPU box on
+        your own network:
+      </p>
+      <pre><code>npm start -- convert export.zip --ollama-host http://gpu-server:11434</code></pre>
+      <p>
+        Running the Docker image works the same way. Ollama on your host machine is automatically
+        reachable at <code>host.docker.internal:11434</code>, or set <code>OLLAMA_HOST</code> to point
+        the container at a different server entirely.
+      </p>
+
+      <h2>Will open-context ever support a hosted API?</h2>
+      <p>
+        Possibly. The project's own FAQ already addresses this directly: Claude API support "may be
+        added later," but it isn't available today, and Ollama is free and runs locally in the
+        meantime. If a hosted option does arrive, the expectation set by the rest of the project is
+        that it would be an explicit opt-in alongside Ollama — the same way AI analysis itself is
+        already opt-in via <code>--skip-preferences</code> — rather than a replacement for the
+        local-first default.
+      </p>
+
+      <div class="cta">
+        <p style="margin:0; color: var(--muted);">Convert your chat export with analysis that never leaves your machine.</p>
+        <a href="/">Get started with open-context →</a>
+      </div>
+
+      <h2>FAQ</h2>
+
+      <h3>Does open-context ever send my chat history to OpenAI, Anthropic, or another hosted API?</h3>
+      <p>No. Today, open-context's only AI analysis backend is Ollama, and it only talks to the Ollama host you configure (locally by default, or a remote server you control via <code>--ollama-host</code>). It has no built-in code path to a hosted LLM API.</p>
+
+      <h3>What exactly gets sent to Ollama during analysis?</h3>
+      <p>Your conversation text, capped at roughly 100,000 tokens (about 400,000 characters) per run, plus a prompt template asking for a preferences or memory summary. Nothing else about your machine or account is transmitted.</p>
+
+      <h3>Can I guarantee zero network calls during conversion?</h3>
+      <p>Yes. Running the CLI with <code>--skip-preferences</code> produces the full markdown conversion of your conversations without calling Ollama or anything else — the pipeline falls back to a basic, non-AI preferences and memory summary generated entirely offline.</p>
+
+      <h3>Is Ollama itself sending my data back to a company?</h3>
+      <p>No. Ollama is open source software that runs model inference on the machine or server you install it on. Once a model is pulled locally, generating a response does not require a call back to ollama.com or any other third party.</p>
+
+      <h3>Will open-context ever support a hosted API like Claude's instead of Ollama?</h3>
+      <p>Not yet. The project's own FAQ notes that Claude API support may be added later, but Ollama remains the default specifically because it keeps the analysis step local — any hosted option would need to be explicitly opted into, not the default path.</p>
+
+      <p>
+        For a deeper look at how this fits open-context's broader architecture, see
+        <a class="inline-link" href="/blog/self-hosted-vs-cloud-ai-memory/">Self-Hosted vs. Cloud AI Memory: Where Should Yours Live</a>.
+      </p>
+    </article>
+  </main>
+
+  <footer>
+    <span>open-context.dev — open source, self-hosted</span>
+    <div>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a href="https://hub.docker.com/r/adityakarnam/opencontext" target="_blank" rel="noopener noreferrer">Docker Hub</a>
+    </div>
+  </footer>
+</body>
+</html>

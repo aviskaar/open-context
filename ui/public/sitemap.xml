@@ -11,6 +11,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://open-context.dev/blog/ollama-local-llm-privacy/</loc>
+    <lastmod>2026-10-21</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://open-context.dev/blog/tags-vs-bubbles/</loc>
     <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
