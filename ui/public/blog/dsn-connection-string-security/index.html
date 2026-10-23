@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="/opencontext-logo.png" />
+  <title>How open-context Redacts Database Credentials in Logs</title>
+  <meta name="description" content="open-context's BYODB layer parses every database connection string and masks passwords, tokens, and API keys before they reach a log, API response, or the UI." />
+  <link rel="canonical" href="https://open-context.dev/blog/dsn-connection-string-security/" />
+  <meta property="og:title" content="How open-context Redacts Database Credentials in Logs" />
+  <meta property="og:description" content="open-context's BYODB layer parses every database connection string and masks passwords, tokens, and API keys before they reach a log, API response, or the UI." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://open-context.dev/blog/dsn-connection-string-security/" />
+  <meta property="og:image" content="https://open-context.dev/opencontext-logo.png" />
+  <meta property="article:published_time" content="2026-10-23" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="How open-context Redacts Database Credentials in Logs" />
+  <meta name="twitter:description" content="How open-context masks passwords, tokens, and API keys in every database connection string before they reach a log, API response, or the UI." />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BlogPosting",
+        "headline": "How open-context Redacts Database Credentials in Logs",
+        "description": "open-context's BYODB layer parses every database connection string and masks passwords, tokens, and API keys before they reach a log, API response, or the UI.",
+        "datePublished": "2026-10-23",
+        "dateModified": "2026-10-23",
+        "mainEntityOfPage": { "@type": "WebPage", "@id": "https://open-context.dev/blog/dsn-connection-string-security/" },
+        "image": "https://open-context.dev/opencontext-logo.png",
+        "author": { "@type": "Organization", "name": "open-context", "url": "https://open-context.dev/" },
+        "publisher": {
+          "@type": "Organization",
+          "name": "open-context",
+          "logo": { "@type": "ImageObject", "url": "https://open-context.dev/opencontext-logo.png" }
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Does open-context ever log my database password?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. open-context parses every connection string into a redacted form with passwords and secret query parameters replaced by ***, and only that redacted form is ever written to a log line, returned from the HTTP API, or shown in the UI." }
+          },
+          {
+            "@type": "Question",
+            "name": "What's the difference between a DSN's raw, canonical, and redacted forms?",
+            "acceptedAnswer": { "@type": "Answer", "text": "raw is the original string with credentials intact and is only ever handed to the database driver that needs to connect. canonical is the same string with its scheme normalized to the exact spelling a driver library expects, such as rediss:// or mongodb+srv://. redacted masks every credential and is the only form safe to log, return over HTTP, or display in the UI." }
+          },
+          {
+            "@type": "Question",
+            "name": "Which parts of a connection string get masked?",
+            "acceptedAnswer": { "@type": "Answer", "text": "The password segment of a user:password@host authority is replaced with ***, and any query parameter named token, password, apikey, api_key, or authtoken has its value replaced with ***. The username, host, port, and database name are left visible since they aren't secrets on their own." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does redaction protect against a stolen database password?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. Redaction only stops open-context's own logs, API responses, and UI from displaying a credential in plain text. It doesn't replace rotating leaked credentials, restricting network access to your database, or securing the database server itself." }
+          },
+          {
+            "@type": "Question",
+            "name": "Do I need to configure anything to get this protection?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. Redaction is automatic for every connection string parsed by open-context, whether it comes from OPENCONTEXT_DB_URL, the legacy OPENCONTEXT_STORE_PATH, or a config file, and it applies the same way across all 15 supported database backends." }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <style>
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Regular-Trial-BF63f6cbd970ee9.otf') format('opentype'); font-weight: 400; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Medium-Trial-BF63f6cbdb24b6d.otf') format('opentype'); font-weight: 500; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Bold-Trial-BF63f6cbda1877f.otf') format('opentype'); font-weight: 700; font-style: normal; }
+
+    :root {
+      --bg: #000000;
+      --card: #0a0a0a;
+      --border: #262626;
+      --fg: #fafafa;
+      --muted: #a1a1aa;
+      --accent: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Styrene A', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.7;
+    }
+    a { color: inherit; }
+    header {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; gap: 1.5rem;
+      padding: 0.9rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.9);
+      backdrop-filter: blur(6px);
+    }
+    header .brand { display: flex; align-items: center; gap: 0.5rem; margin-right: auto; text-decoration: none; }
+    header .brand img { width: 32px; height: 32px; border-radius: 3px; }
+    header .brand span { font-size: 0.9rem; font-weight: 600; letter-spacing: -0.01em; }
+    header nav { display: flex; align-items: center; gap: 1.5rem; font-size: 0.875rem; color: var(--muted); }
+    header nav a { text-decoration: none; }
+    header nav a:hover, header nav a.active { color: var(--fg); }
+
+    main { max-width: 720px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+    .meta { font-size: 0.8rem; color: var(--muted); font-family: monospace; margin-bottom: 0.75rem; }
+    h1 { font-size: 2.1rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; margin: 0 0 1.5rem; }
+    h2 { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.01em; margin: 2.5rem 0 1rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin: 1.75rem 0 0.6rem; }
+    p { color: #e4e4e7; margin: 0 0 1.1rem; }
+    p.lead { font-size: 1.1rem; color: var(--fg); }
+    ul, ol { color: #e4e4e7; padding-left: 1.3rem; margin: 0 0 1.1rem; }
+    li { margin-bottom: 0.4rem; }
+    code { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85em; }
+    pre { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto; font-size: 0.85rem; }
+    pre code { border: none; padding: 0; background: none; }
+    a.inline-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+    .takeaways {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin: 1.5rem 0 2.5rem;
+    }
+    .takeaways p.label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.7rem; color: var(--accent); font-weight: 600; margin: 0 0 0.75rem; }
+    .takeaways ul { margin: 0; }
+    .table-wrap { overflow-x: auto; margin: 0 0 1.1rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
+    th { color: var(--muted); font-weight: 600; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+    .cta {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin: 2.5rem 0;
+      text-align: center;
+    }
+    .cta a {
+      display: inline-block;
+      margin-top: 0.75rem;
+      background: var(--fg);
+      color: #000;
+      font-weight: 600;
+      padding: 0.55rem 1.25rem;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 0.75rem;
+      font-size: 0.75rem; color: var(--muted);
+    }
+    footer a { text-decoration: none; margin-left: 1rem; }
+    footer a:hover { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">
+      <img src="/opencontext-logo.png" alt="open-context" />
+      <span>open-context</span>
+    </a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/blog/" class="active">Blog</a>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <div class="meta">October 23, 2026 · 6 min read</div>
+      <h1>How open-context Redacts Database Credentials in Logs</h1>
+
+      <p class="lead">
+        open-context never writes a raw database password to a log line, API response, or the
+        dashboard. Every connection string it accepts — across all 15 supported context-store
+        backends — is parsed into three forms: a <code>raw</code> string used only to open the
+        connection, a <code>canonical</code> string the driver actually consumes, and a
+        <code>redacted</code> string with every credential replaced by <code>***</code> that is
+        the only one ever logged, returned over HTTP, or shown in the UI.
+      </p>
+
+      <div class="takeaways">
+        <p class="label">Key takeaways</p>
+        <ul>
+          <li>open-context's DSN parser splits every connection string into <code>raw</code>, <code>canonical</code>, and <code>redacted</code> forms — only <code>redacted</code> ever reaches a log, API response, or the UI.</li>
+          <li>Masking covers the password half of <code>user:password@host</code> and any query parameter named <code>token</code>, <code>password</code>, <code>apikey</code>, <code>api_key</code>, or <code>authtoken</code>.</li>
+          <li>Drivers connect with <code>canonical</code>, not <code>raw</code> — it preserves scheme details like <code>rediss://</code> and <code>mongodb+srv://</code> that change how the connection actually behaves.</li>
+          <li>This is a project-wide invariant, not a convenience for one backend: every one of the 15 BYODB adapters is expected to satisfy it, and the conformance suite treats it as part of the contract.</li>
+          <li>It mirrors established guidance — CWE-532 names secrets in log files as its own weakness class, and OWASP's Logging Cheat Sheet recommends masking sensitive values before they're written anywhere.</li>
+        </ul>
+      </div>
+
+      <h2>Why connection string secrets end up in logs anyway</h2>
+      <p>
+        A database connection string is usually treated as one opaque token:
+        <code>postgres://user:password@host:5432/db</code>. It gets handed to a driver, printed in
+        a startup banner, echoed back in an error message when the connection fails, or surfaced in
+        a "current database" status line somewhere in a dashboard. Any one of those ordinary code
+        paths can put a plaintext password somewhere it was never meant to be.
+      </p>
+      <p>
+        This isn't a hypothetical. MITRE's
+        <a class="inline-link" href="https://cwe.mitre.org/data/definitions/532.html" target="_blank" rel="noopener noreferrer">CWE-532, "Insertion of Sensitive Information Into Log File"</a>,
+        exists precisely because this mistake recurs across unrelated codebases: once a credential
+        lands in a log, it's exposed to anyone with log access, and log storage is routinely less
+        locked down than the system the credential protects. OWASP's Logging Cheat Sheet gives the
+        standard remedy — mask, sanitize, or otherwise avoid writing secrets to logs in the first
+        place, rather than trying to scrub them out after the fact.
+      </p>
+
+      <h2>How open-context parses and redacts a connection string</h2>
+      <h3>Three strings, one DSN</h3>
+      <p>
+        open-context's <code>parseDsn()</code>, in <code>src/store/dsn.ts</code>, is the single
+        place a connection string enters the system — whether it comes from the
+        <code>OPENCONTEXT_DB_URL</code> environment variable, a config file, or the legacy
+        <code>OPENCONTEXT_STORE_PATH</code> setting. It returns one object with three related
+        strings:
+      </p>
+      <pre><code>{
+  raw:       "postgres://admin:s3cr3t@db.internal:5432/opencontext",
+  canonical: "postgres://admin:s3cr3t@db.internal:5432/opencontext",
+  redacted:  "postgres://admin:***@db.internal:5432/opencontext"
+}</code></pre>
+      <p>
+        <code>raw</code> is handed only to the driver that opens the connection. <code>canonical</code>
+        rewrites the scheme to whatever spelling the underlying client library actually expects —
+        important because open-context accepts friendlier aliases like <code>mongo://</code> or
+        <code>valkey://</code> that a real MongoDB or Redis client would reject outright.
+        <code>redacted</code> is what everything else in the codebase is allowed to touch.
+      </p>
+
+      <h3>What actually gets masked</h3>
+      <p>
+        <code>redactDsn()</code> does two things to a connection string. First, it replaces the
+        password half of a <code>user:password@host</code> authority with <code>***</code>. Second,
+        it walks the query string and masks the value of any parameter named <code>token</code>,
+        <code>password</code>, <code>apikey</code>, <code>api_key</code>, or <code>authtoken</code> —
+        covering the common ways backends like Cloudflare D1 or DynamoDB pass an API token instead of
+        a password:
+      </p>
+      <pre><code>// before
+d1://ACCOUNT_ID/DATABASE_ID?apiToken=abcd1234secret
+
+// after redactDsn()
+d1://ACCOUNT_ID/DATABASE_ID?apiToken=***</code></pre>
+      <p>
+        Usernames, hosts, ports, and database names stay visible — they're useful for debugging
+        and aren't secrets by themselves. A string open-context can't parse is returned unchanged
+        rather than thrown on, since <code>redactDsn()</code> is a display helper and must never be
+        the thing that breaks a status page.
+      </p>
+
+      <h2>Where redaction is enforced, not just available</h2>
+      <p>
+        Having a <code>redacted</code> field only matters if nothing else ever gets logged or
+        displayed instead. open-context routes every user-visible surface through it: the
+        <code>/status</code> endpoint in <code>src/server.ts</code> returns
+        <code>resolveDatabase().redacted</code> as the store identifier, the Dashboard's database
+        indicator shows the same redacted string, and the <code>npm run db -- status</code> CLI
+        command prints it rather than the connection string you actually configured. The raw
+        string only ever travels from the environment variable or config file to the driver that
+        needs it — never to a response body, a terminal log, or a React component.
+      </p>
+
+      <h2>Preserving the invariant across 15 backends — and the next one</h2>
+      <p>
+        open-context's BYODB layer implements CRUD once per adapter family (file, SQL,
+        document/KV, multi-model) rather than once per backend, and redaction gets the same
+        treatment: it's written once in <code>dsn.ts</code>, not copy-pasted into 15 separate
+        drivers where one of them could eventually forget. <code>CLAUDE.md</code> states this as a
+        hard invariant for the project — "credentials never leak: everything user-visible goes
+        through <code>redactDsn()</code>" and "drivers pass <code>dsn.canonical</code>, never
+        <code>dsn.raw</code>" — and the steps for <a class="inline-link" href="/blog/byodb-architecture-overview/">adding a 16th backend</a>
+        include parsing its backend-specific fields into the same <code>ParsedDsn</code> shape, so
+        a new driver inherits redaction automatically instead of needing its own.
+      </p>
+      <p>
+        That centralization is also what makes the behavior testable: the same
+        <a class="inline-link" href="/blog/conformance-suite-contract/">conformance suite</a> that
+        checks ordering and search semantics identically across SQLite, Postgres, and the rest can
+        assert that a backend's status output never contains a password — one test, enforced
+        everywhere, instead of fifteen chances to get it wrong. If you're also thinking about what's
+        exposed once a backend is running, the write-up on
+        <a class="inline-link" href="/blog/mcp-server-security/">securing a local MCP server</a>
+        covers the rest of that surface.
+      </p>
+
+      <div class="cta">
+        <p style="margin:0; color: var(--muted);">Point open-context at any of its 15 supported databases without ever worrying what shows up in a log.</p>
+        <a href="/">Get started with open-context →</a>
+      </div>
+
+      <h2>FAQ</h2>
+
+      <h3>Does open-context ever log my database password?</h3>
+      <p>No. open-context parses every connection string into a redacted form with passwords and secret query parameters replaced by <code>***</code>, and only that redacted form is ever written to a log line, returned from the HTTP API, or shown in the UI.</p>
+
+      <h3>What's the difference between a DSN's raw, canonical, and redacted forms?</h3>
+      <p><code>raw</code> is the original string with credentials intact and is only ever handed to the database driver that needs to connect. <code>canonical</code> is the same string with its scheme normalized to the exact spelling a driver library expects, such as <code>rediss://</code> or <code>mongodb+srv://</code>. <code>redacted</code> masks every credential and is the only form safe to log, return over HTTP, or display in the UI.</p>
+
+      <h3>Which parts of a connection string get masked?</h3>
+      <p>The password segment of a <code>user:password@host</code> authority is replaced with <code>***</code>, and any query parameter named <code>token</code>, <code>password</code>, <code>apikey</code>, <code>api_key</code>, or <code>authtoken</code> has its value replaced with <code>***</code>. The username, host, port, and database name are left visible since they aren't secrets on their own.</p>
+
+      <h3>Does redaction protect against a stolen database password?</h3>
+      <p>No. Redaction only stops open-context's own logs, API responses, and UI from displaying a credential in plain text. It doesn't replace rotating leaked credentials, restricting network access to your database, or securing the database server itself.</p>
+
+      <h3>Do I need to configure anything to get this protection?</h3>
+      <p>No. Redaction is automatic for every connection string parsed by open-context, whether it comes from <code>OPENCONTEXT_DB_URL</code>, the legacy <code>OPENCONTEXT_STORE_PATH</code>, or a config file, and it applies the same way across all 15 supported database backends.</p>
+    </article>
+  </main>
+
+  <footer>
+    <span>open-context.dev — open source, self-hosted</span>
+    <div>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a href="https://hub.docker.com/r/adityakarnam/opencontext" target="_blank" rel="noopener noreferrer">Docker Hub</a>
+    </div>
+  </footer>
+</body>
+</html>

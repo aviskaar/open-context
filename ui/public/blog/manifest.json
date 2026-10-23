@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "dsn-connection-string-security",
+      "title": "How open-context Redacts Database Credentials in Logs",
+      "publishedAt": "2026-10-23",
+      "topicTag": "dsn-connection-string-security"
+    },
+    {
       "slug": "ollama-local-llm-privacy",
       "title": "Why open-context Uses Ollama Instead of a Hosted LLM API",
       "publishedAt": "2026-10-21",
@@ -229,10 +235,5 @@
       "topicTag": "bubbles-project-workspaces"
     }
   ],
-  "backlog": [
-    {
-      "topicTag": "dsn-connection-string-security",
-      "workingTitle": "How open-context Keeps Database Passwords Out of Your Logs"
-    }
-  ]
+  "backlog": []
 }
