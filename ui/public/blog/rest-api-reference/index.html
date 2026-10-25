@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="/opencontext-logo.png" />
+  <title>The open-context REST API: A Full Endpoint Reference</title>
+  <meta name="description" content="Every open-context REST API endpoint, from conversation conversion to context CRUD, bubbles, and database management — the same API its own web UI calls." />
+  <link rel="canonical" href="https://open-context.dev/blog/rest-api-reference/" />
+  <meta property="og:title" content="The open-context REST API: A Full Endpoint Reference" />
+  <meta property="og:description" content="Every open-context REST API endpoint, from conversation conversion to context CRUD, bubbles, and database management — the same API its own web UI calls." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://open-context.dev/blog/rest-api-reference/" />
+  <meta property="og:image" content="https://open-context.dev/opencontext-logo.png" />
+  <meta property="article:published_time" content="2026-10-25" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="The open-context REST API: A Full Endpoint Reference" />
+  <meta name="twitter:description" content="Every open-context REST API endpoint — conversion, preferences, contexts, bubbles, and database management — the same API its own web UI calls." />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BlogPosting",
+        "headline": "The open-context REST API: A Full Endpoint Reference",
+        "description": "Every open-context REST API endpoint, from conversation conversion to context CRUD, bubbles, and database management — the same API its own web UI calls.",
+        "datePublished": "2026-10-25",
+        "dateModified": "2026-10-25",
+        "mainEntityOfPage": { "@type": "WebPage", "@id": "https://open-context.dev/blog/rest-api-reference/" },
+        "image": "https://open-context.dev/opencontext-logo.png",
+        "author": { "@type": "Organization", "name": "open-context", "url": "https://open-context.dev/" },
+        "publisher": {
+          "@type": "Organization",
+          "name": "open-context",
+          "logo": { "@type": "ImageObject", "url": "https://open-context.dev/opencontext-logo.png" }
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Does the open-context REST API require an API key or auth token?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. The API has no built-in authentication — it's designed to run on localhost or inside a trusted Docker network, the same assumption documented for open-context's stdio MCP server. If you expose it beyond that, put it behind a reverse proxy that handles auth itself." }
+          },
+          {
+            "@type": "Question",
+            "name": "What's the difference between the REST API and the MCP server?",
+            "acceptedAnswer": { "@type": "Answer", "text": "The MCP server talks to Claude over stdio using six fixed tools (save_context, recall_context, and so on). The REST API is a general HTTP interface over the same context store, used by open-context's own web UI and available for any script or custom integration you write yourself." }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I manage bubbles entirely through the REST API?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. GET, POST, PUT, and DELETE on /api/bubbles and /api/bubbles/:id cover creating, renaming, and removing project workspaces, and GET /api/bubbles/:id/contexts lists everything saved inside one — the same operations the Dashboard's bubble UI performs." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does switching database backends through the API risk losing data?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. PUT /api/db/config only replaces the live connection once the new one opens successfully, so a bad connection string can't take the server down. /api/db/migrate is read-only on the source store, copying into the target rather than modifying what's already there." }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <style>
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Regular-Trial-BF63f6cbd970ee9.otf') format('opentype'); font-weight: 400; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Medium-Trial-BF63f6cbdb24b6d.otf') format('opentype'); font-weight: 500; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Bold-Trial-BF63f6cbda1877f.otf') format('opentype'); font-weight: 700; font-style: normal; }
+
+    :root {
+      --bg: #000000;
+      --card: #0a0a0a;
+      --border: #262626;
+      --fg: #fafafa;
+      --muted: #a1a1aa;
+      --accent: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Styrene A', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.7;
+    }
+    a { color: inherit; }
+    header {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; gap: 1.5rem;
+      padding: 0.9rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.9);
+      backdrop-filter: blur(6px);
+    }
+    header .brand { display: flex; align-items: center; gap: 0.5rem; margin-right: auto; text-decoration: none; }
+    header .brand img { width: 32px; height: 32px; border-radius: 3px; }
+    header .brand span { font-size: 0.9rem; font-weight: 600; letter-spacing: -0.01em; }
+    header nav { display: flex; align-items: center; gap: 1.5rem; font-size: 0.875rem; color: var(--muted); }
+    header nav a { text-decoration: none; }
+    header nav a:hover, header nav a.active { color: var(--fg); }
+
+    main { max-width: 720px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+    .meta { font-size: 0.8rem; color: var(--muted); font-family: monospace; margin-bottom: 0.75rem; }
+    h1 { font-size: 2.1rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; margin: 0 0 1.5rem; }
+    h2 { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.01em; margin: 2.5rem 0 1rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin: 1.75rem 0 0.6rem; }
+    p { color: #e4e4e7; margin: 0 0 1.1rem; }
+    p.lead { font-size: 1.1rem; color: var(--fg); }
+    ul, ol { color: #e4e4e7; padding-left: 1.3rem; margin: 0 0 1.1rem; }
+    li { margin-bottom: 0.4rem; }
+    code { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85em; }
+    pre { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto; font-size: 0.85rem; }
+    pre code { border: none; padding: 0; background: none; }
+    a.inline-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+    .takeaways {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin: 1.5rem 0 2.5rem;
+    }
+    .takeaways p.label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.7rem; color: var(--accent); font-weight: 600; margin: 0 0 0.75rem; }
+    .takeaways ul { margin: 0; }
+    .table-wrap { overflow-x: auto; margin: 0 0 1.1rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
+    th { color: var(--muted); font-weight: 600; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+    .cta {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin: 2.5rem 0;
+      text-align: center;
+    }
+    .cta a {
+      display: inline-block;
+      margin-top: 0.75rem;
+      background: var(--fg);
+      color: #000;
+      font-weight: 600;
+      padding: 0.55rem 1.25rem;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 0.75rem;
+      font-size: 0.75rem; color: var(--muted);
+    }
+    footer a { text-decoration: none; margin-left: 1rem; }
+    footer a:hover { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">
+      <img src="/opencontext-logo.png" alt="open-context" />
+      <span>open-context</span>
+    </a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/blog/" class="active">Blog</a>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <div class="meta">October 25, 2026 · 6 min read</div>
+      <h1>The open-context REST API: A Full Endpoint Reference</h1>
+
+      <p class="lead">
+        open-context ships a full REST API on port 3000 — the exact same API its own web UI calls — covering
+        conversation conversion, preferences, MCP contexts, bubbles, and database management. Every route lives
+        under <code>/api</code> and returns JSON, so you can script context-store operations or build your own
+        tooling against the same local store Claude's MCP server reads from, without touching the UI at all.
+      </p>
+
+      <div class="takeaways">
+        <p class="label">Key takeaways</p>
+        <ul>
+          <li>The REST API isn't a separate product bolted onto the UI — it's the literal interface open-context's React app in <code>ui/src/</code> consumes; anything the Dashboard or ContextViewer can do, a script can do over plain HTTP.</li>
+          <li>Six endpoint groups cover the whole product: health and Ollama diagnostics, the <code>/api/convert</code> pipeline, preferences, contexts (the MCP store's CRUD), bubbles (project workspaces), and database management.</li>
+          <li>There's no built-in authentication. The API assumes it's running on localhost or inside a trusted Docker network — the same assumption documented for the stdio MCP server.</li>
+          <li>Switching backends with <code>PUT /api/db/config</code> can't take the server down — it only replaces the active connection once the new one opens successfully.</li>
+          <li>Every database-facing response, including <code>/api/db/status</code>, returns a redacted connection string — raw credentials never leave the process.</li>
+        </ul>
+      </div>
+
+      <h2>Why open-context has a REST API at all</h2>
+      <p>
+        open-context already ships a CLI for one-shot conversion and an MCP server that gives Claude
+        <a class="inline-link" href="/blog/claude-code-persistent-memory-mcp/">persistent memory</a> across sessions.
+        The REST API, defined in <code>src/server.ts</code> as a plain Express app, is what makes the web UI possible
+        at all. Rather than build a UI-specific backend, the project exposed its context store and conversion
+        pipeline as one HTTP API that the React app consumes with ordinary <code>fetch</code> calls. That means
+        every button in the Dashboard, ContextViewer, PreferencesEditor, and VendorExport maps to a documented
+        route below — nothing in the UI has a private shortcut the API doesn't also expose.
+      </p>
+
+      <h2>Endpoint reference</h2>
+      <p>Every route is prefixed with <code>/api</code>, returns JSON, and requires no API key.</p>
+
+      <h3>Health and Ollama diagnostics</h3>
+      <p>
+        <code>GET /api/health</code> returns <code>{ status, ollamaHost, store }</code>, where <code>store</code>
+        is the redacted connection string from the active database resolution. <code>GET /api/ollama/models</code>
+        proxies to whichever Ollama host the server is configured with — <code>OLLAMA_HOST</code>, defaulting to
+        <code>http://host.docker.internal:11434</code> so a container can reach a model running on its host machine —
+        and returns a 503 if Ollama isn't reachable, rather than hanging.
+      </p>
+
+      <h3>Conversion</h3>
+      <p>
+        <code>POST /api/convert</code> accepts a multipart file upload (your ChatGPT export ZIP) plus optional
+        <code>model</code>, <code>ollamaHost</code>, and <code>skipPreferences</code> fields. It runs the full
+        pipeline server-side — extract, parse, normalize, then analyze — and returns the normalized conversations
+        plus generated <code>preferences</code> and <code>memory</code> text. If AI analysis fails or
+        <code>skipPreferences</code> is <code>true</code>, it falls back to a template-based generator instead of
+        erroring, so a bad or missing Ollama connection never breaks the conversion itself.
+      </p>
+
+      <h3>Contexts</h3>
+      <p>
+        Full CRUD over the MCP store: <code>GET /api/contexts</code> (optional <code>?tag=</code> filter),
+        <code>POST /api/contexts</code> (<code>content</code>, <code>tags</code>, <code>source</code>,
+        <code>bubbleId</code>), <code>GET /api/contexts/search?q=</code>, and
+        <code>GET</code>/<code>PUT</code>/<code>DELETE /api/contexts/:id</code>. This is the same store the MCP
+        server's <code>save_context</code> and <code>recall_context</code> tools write to — a context you save
+        through the API shows up the next time Claude calls <code>list_contexts</code>, and vice versa.
+      </p>
+
+      <h3>Bubbles</h3>
+      <p>
+        CRUD for project workspaces: <code>GET /api/bubbles</code> returns every bubble with a
+        <code>contextCount</code>, <code>POST</code> creates one, <code>GET</code>/<code>PUT</code>/<code>DELETE
+        /api/bubbles/:id</code> manage a single bubble, and <code>GET /api/bubbles/:id/contexts</code> lists
+        everything saved inside it. Deleting a bubble takes a <code>?deleteContexts=true</code> flag to decide
+        whether its contexts are removed along with it or just detached.
+      </p>
+
+      <h3>Database management</h3>
+      <p>
+        <code>GET /api/db/status</code> reports the active adapter, whether
+        <code>OPENCONTEXT_DB_URL</code> has it locked, and context/bubble counts. <code>GET /api/db/adapters</code>
+        lists all 15 supported backends and whether each one's driver package is installed.
+        <code>POST /api/db/test</code> opens a candidate connection string, pings it, and closes it again without
+        touching the live store. <code>PUT /api/db/config</code> switches the live store, keeping the previous one
+        running if the new connection string fails to open, and <code>POST /api/db/migrate</code> copies contexts
+        and bubbles into a different backend, read-only on the source.
+      </p>
+
+      <h2>A worked example</h2>
+      <p>Save a context, search for it, and check which database is currently backing the store:</p>
+      <pre><code>curl -X POST http://localhost:3000/api/contexts \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Prefers TypeScript, writes tests before refactors", "tags": ["preferences"], "source": "manual"}'
+
+curl "http://localhost:3000/api/contexts/search?q=typescript"
+
+curl http://localhost:3000/api/db/status</code></pre>
+      <p>
+        The search endpoint does a case-insensitive substring match over content, tags, and source — the exact
+        search semantics the project's
+        <a class="inline-link" href="/blog/conformance-suite-contract/">conformance suite</a> locks in identically
+        across every one of the 15 backends, so the same curl command behaves the same way whether the store is a
+        local JSON file or a managed Postgres instance.
+      </p>
+
+      <h2>Keeping it safe beyond localhost</h2>
+      <p>
+        None of these routes check a credential, because the API is built around the same assumption as
+        open-context's <a class="inline-link" href="/blog/mcp-server-security/">MCP server</a>: it runs on your
+        own machine, or inside a Docker network you control. That's fine for the default
+        <code>docker run -p 3000:3000</code> setup, but if you bind it to a shared network or expose it over the
+        internet, put a reverse proxy with its own authentication in front of it rather than relying on the API
+        itself to gate access. Credential handling for the database layer is already covered — every
+        connection-string response goes through the same
+        <a class="inline-link" href="/blog/dsn-connection-string-security/">redaction</a> the rest of the project
+        uses — but network exposure is a separate concern the API intentionally leaves to you.
+      </p>
+
+      <div class="cta">
+        <p style="margin:0; color: var(--muted);">Point your own scripts at the same API that drives the open-context UI.</p>
+        <a href="/">Get started with open-context →</a>
+      </div>
+
+      <h2>FAQ</h2>
+
+      <h3>Does the open-context REST API require an API key or auth token?</h3>
+      <p>No. The API has no built-in authentication — it's designed to run on localhost or inside a trusted Docker network, the same assumption documented for open-context's stdio MCP server. If you expose it beyond that, put it behind a reverse proxy that handles auth itself.</p>
+
+      <h3>What's the difference between the REST API and the MCP server?</h3>
+      <p>The MCP server talks to Claude over stdio using six fixed tools (<code>save_context</code>, <code>recall_context</code>, and so on). The REST API is a general HTTP interface over the same context store, used by open-context's own web UI and available for any script or custom integration you write yourself.</p>
+
+      <h3>Can I manage bubbles entirely through the REST API?</h3>
+      <p>Yes. GET, POST, PUT, and DELETE on <code>/api/bubbles</code> and <code>/api/bubbles/:id</code> cover creating, renaming, and removing project workspaces, and <code>GET /api/bubbles/:id/contexts</code> lists everything saved inside one — the same operations the Dashboard's bubble UI performs.</p>
+
+      <h3>Does switching database backends through the API risk losing data?</h3>
+      <p>No. <code>PUT /api/db/config</code> only replaces the live connection once the new one opens successfully, so a bad connection string can't take the server down. <code>/api/db/migrate</code> is read-only on the source store, copying into the target rather than modifying what's already there.</p>
+    </article>
+  </main>
+
+  <footer>
+    <span>open-context.dev — open source, self-hosted</span>
+    <div>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a href="https://hub.docker.com/r/adityakarnam/opencontext" target="_blank" rel="noopener noreferrer">Docker Hub</a>
+    </div>
+  </footer>
+</body>
+</html>

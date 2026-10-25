@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "rest-api-reference",
+      "title": "The open-context REST API: A Full Endpoint Reference",
+      "publishedAt": "2026-10-25",
+      "topicTag": "rest-api-reference"
+    },
+    {
       "slug": "dsn-connection-string-security",
       "title": "How open-context Redacts Database Credentials in Logs",
       "publishedAt": "2026-10-23",
@@ -235,5 +241,10 @@
       "topicTag": "bubbles-project-workspaces"
     }
   ],
-  "backlog": []
+  "backlog": [
+    { "topicTag": "docker-single-image-three-modes", "workingTitle": "One Docker Image, Three Ways to Run open-context" },
+    { "topicTag": "markdown-export-format", "workingTitle": "Why open-context Exports Conversations as Markdown" },
+    { "topicTag": "zip-extraction-safety", "workingTitle": "How open-context Safely Extracts Your ChatGPT Export ZIP" },
+    { "topicTag": "preferences-editor-sections", "workingTitle": "Inside the 6 Sections of the open-context Preferences Editor" }
+  ]
 }
