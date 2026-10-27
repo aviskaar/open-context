@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="/opencontext-logo.png" />
+  <title>One open-context Docker Image, Three Ways to Run It</title>
+  <meta name="description" content="The official open-context Docker image runs as an HTTP server, an MCP stdio server, or a one-off CLI converter — same image, three CMD overrides, one build." />
+  <link rel="canonical" href="https://open-context.dev/blog/docker-single-image-three-modes/" />
+  <meta property="og:title" content="One open-context Docker Image, Three Ways to Run It" />
+  <meta property="og:description" content="The official open-context Docker image runs as an HTTP server, an MCP stdio server, or a one-off CLI converter — same image, three CMD overrides, one build." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://open-context.dev/blog/docker-single-image-three-modes/" />
+  <meta property="og:image" content="https://open-context.dev/opencontext-logo.png" />
+  <meta property="article:published_time" content="2026-10-27" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="One open-context Docker Image, Three Ways to Run It" />
+  <meta name="twitter:description" content="One Dockerfile, three CMD overrides: HTTP server, MCP stdio server, or a one-off CLI conversion job — all from adityakarnam/open-context:latest." />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BlogPosting",
+        "headline": "One open-context Docker Image, Three Ways to Run It",
+        "description": "The official open-context Docker image runs as an HTTP server, an MCP stdio server, or a one-off CLI converter — same image, three CMD overrides, one build.",
+        "datePublished": "2026-10-27",
+        "dateModified": "2026-10-27",
+        "mainEntityOfPage": { "@type": "WebPage", "@id": "https://open-context.dev/blog/docker-single-image-three-modes/" },
+        "image": "https://open-context.dev/opencontext-logo.png",
+        "author": { "@type": "Organization", "name": "open-context", "url": "https://open-context.dev/" },
+        "publisher": {
+          "@type": "Organization",
+          "name": "open-context",
+          "logo": { "@type": "ImageObject", "url": "https://open-context.dev/opencontext-logo.png" }
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Do I need three different Docker images for open-context?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. There is one image, adityakarnam/open-context:latest, built from a single multi-stage Dockerfile. Which mode it runs — HTTP server, MCP stdio server, or CLI converter — depends only on the command you pass to docker run, not on a different build." }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I run the HTTP server and the MCP server from open-context at the same time?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. The repo's docker-compose.yml defines an app service (HTTP server) and an mcp service (stdio MCP server) built from the same image, and both can mount the same opencontext-data volume so they share preferences and context." }
+          },
+          {
+            "@type": "Question",
+            "name": "Why does open-context's MCP mode need the -i flag on docker run?",
+            "acceptedAnswer": { "@type": "Answer", "text": "MCP servers communicate over stdio rather than a network port. The -i flag keeps the container's standard input open so Claude Code or Claude Desktop can exchange MCP protocol messages with the process inside the container." }
+          },
+          {
+            "@type": "Question",
+            "name": "How do I add a database driver like Postgres without bloating the default open-context image?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Build with a DB_DRIVERS build argument, for example docker build --build-arg DB_DRIVERS=\"pg\" -t opencontext . The default build installs no optional drivers, so the image stays small and still works with the built-in JSON, SQLite, in-memory, and Cloudflare D1 backends." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does the CLI conversion mode need the same persistent volume as the server and MCP modes?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Only if you also want its output to land in the shared context store. A one-off conversion typically bind-mounts an input ZIP and an output directory directly, since the container exits once the conversion finishes." }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <style>
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Regular-Trial-BF63f6cbd970ee9.otf') format('opentype'); font-weight: 400; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Medium-Trial-BF63f6cbdb24b6d.otf') format('opentype'); font-weight: 500; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Bold-Trial-BF63f6cbda1877f.otf') format('opentype'); font-weight: 700; font-style: normal; }
+
+    :root {
+      --bg: #000000;
+      --card: #0a0a0a;
+      --border: #262626;
+      --fg: #fafafa;
+      --muted: #a1a1aa;
+      --accent: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Styrene A', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.7;
+    }
+    a { color: inherit; }
+    header {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; gap: 1.5rem;
+      padding: 0.9rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.9);
+      backdrop-filter: blur(6px);
+    }
+    header .brand { display: flex; align-items: center; gap: 0.5rem; margin-right: auto; text-decoration: none; }
+    header .brand img { width: 32px; height: 32px; border-radius: 3px; }
+    header .brand span { font-size: 0.9rem; font-weight: 600; letter-spacing: -0.01em; }
+    header nav { display: flex; align-items: center; gap: 1.5rem; font-size: 0.875rem; color: var(--muted); }
+    header nav a { text-decoration: none; }
+    header nav a:hover, header nav a.active { color: var(--fg); }
+
+    main { max-width: 720px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+    .meta { font-size: 0.8rem; color: var(--muted); font-family: monospace; margin-bottom: 0.75rem; }
+    h1 { font-size: 2.1rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; margin: 0 0 1.5rem; }
+    h2 { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.01em; margin: 2.5rem 0 1rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin: 1.75rem 0 0.6rem; }
+    p { color: #e4e4e7; margin: 0 0 1.1rem; }
+    p.lead { font-size: 1.1rem; color: var(--fg); }
+    ul, ol { color: #e4e4e7; padding-left: 1.3rem; margin: 0 0 1.1rem; }
+    li { margin-bottom: 0.4rem; }
+    code { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85em; }
+    pre { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto; font-size: 0.85rem; }
+    pre code { border: none; padding: 0; background: none; }
+    a.inline-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+    .takeaways {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin: 1.5rem 0 2.5rem;
+    }
+    .takeaways p.label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.7rem; color: var(--accent); font-weight: 600; margin: 0 0 0.75rem; }
+    .takeaways ul { margin: 0; }
+    .table-wrap { overflow-x: auto; margin: 0 0 1.1rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
+    th { color: var(--muted); font-weight: 600; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+    .cta {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin: 2.5rem 0;
+      text-align: center;
+    }
+    .cta a {
+      display: inline-block;
+      margin-top: 0.75rem;
+      background: var(--fg);
+      color: #000;
+      font-weight: 600;
+      padding: 0.55rem 1.25rem;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 0.75rem;
+      font-size: 0.75rem; color: var(--muted);
+    }
+    footer a { text-decoration: none; margin-left: 1rem; }
+    footer a:hover { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">
+      <img src="/opencontext-logo.png" alt="open-context" />
+      <span>open-context</span>
+    </a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/blog/" class="active">Blog</a>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <div class="meta">October 27, 2026 · 7 min read</div>
+      <h1>One open-context Docker Image, Three Ways to Run It</h1>
+
+      <p class="lead">
+        The official open-context Docker image, <code>adityakarnam/open-context:latest</code>, can run as an
+        HTTP server with the full web UI, as an MCP stdio server for Claude Code and Claude Desktop, or as a
+        one-off CLI conversion job — all from the exact same build. Which mode it runs depends entirely on the
+        command you pass to <code>docker run</code>, because the image bundles the compiled server, MCP server,
+        and CLI together in one <code>dist/</code> folder.
+      </p>
+
+      <div class="takeaways">
+        <p class="label">Key takeaways</p>
+        <ul>
+          <li><code>adityakarnam/open-context:latest</code> is one multi-stage build — open-context does not ship three separate images for its three run modes.</li>
+          <li>The default command, <code>node dist/server.js</code>, starts the Express HTTP server that serves the built React UI and REST API on port 3000.</li>
+          <li>Overriding the command to <code>node dist/mcp/index.js</code> turns the identical image into a stdio MCP server for Claude Code or Claude Desktop — no rebuild required.</li>
+          <li>Overriding the command to <code>node dist/index.js convert &lt;file&gt;</code> runs the Commander.js CLI as a single batch job instead of a long-running process.</li>
+          <li>All three modes read and write the same <code>/root/.opencontext</code> volume, so preferences and saved context created in one mode are visible in the others.</li>
+        </ul>
+      </div>
+
+      <h2>Why one image, not three</h2>
+      <p>
+        open-context's <code>Dockerfile</code> has three stages. <code>ui-builder</code> runs <code>npm ci</code>
+        and <code>npm run build</code> against <code>ui/</code> to produce a static React bundle.
+        <code>server-builder</code> runs <code>npm ci</code> and <code>tsc</code> against <code>src/</code> to
+        compile the HTTP server, the CLI, and the MCP server into one <code>dist/</code> folder. The final stage
+        starts from a clean <code>node:25-slim</code> and copies in only the two build outputs — the compiled
+        <code>dist/</code> and the built UI — leaving every build tool, dev dependency, and source file behind.
+      </p>
+      <p>
+        That's the standard multi-stage pattern: use multiple <code>FROM</code> statements in one Dockerfile,
+        and copy only the finished artifacts from earlier stages into a minimal final stage, so the toolchain
+        used to build the image never ships inside it
+        (<a class="inline-link" href="https://docs.docker.com/build/building/multi-stage/" target="_blank" rel="noopener noreferrer">Docker's multi-stage builds guide</a>).
+        Because all three of open-context's run modes come from that same <code>dist/</code> folder, there's
+        nothing mode-specific to rebuild — the only thing that changes between them is the command the container
+        starts with.
+      </p>
+
+      <h2>Mode 1 — HTTP server (the default)</h2>
+      <p>
+        With no command override, the image runs its <code>CMD</code>, <code>node dist/server.js</code>: an
+        Express server that serves the built React dashboard and exposes the full
+        <a class="inline-link" href="/blog/rest-api-reference/">REST API</a> on port 3000.
+      </p>
+      <pre><code>docker run -p 3000:3000 \
+  -v opencontext-data:/root/.opencontext \
+  adityakarnam/open-context:latest</code></pre>
+      <p>
+        Open <code>http://localhost:3000</code> and you get the import pipeline, preferences editor, context
+        viewer, and database settings — the same UI a local <code>npm run dev</code> stack serves. Configuration
+        is all environment variables: <code>PORT</code> for the listen port, <code>OLLAMA_HOST</code> for where
+        to reach Ollama (it defaults to <code>host.docker.internal:11434</code> so it can reach Ollama running on
+        your host machine), and <code>OPENCONTEXT_DB_URL</code> or <code>OPENCONTEXT_STORE_PATH</code> to point
+        the context store at one of the
+        <a class="inline-link" href="/blog/byodb-architecture-overview/">15 BYODB backends</a> instead of the
+        default JSON file.
+      </p>
+
+      <h2>Mode 2 — MCP stdio server for Claude</h2>
+      <p>
+        Override the command to <code>node dist/mcp/index.js</code> and the same image becomes a stdio MCP
+        server instead of an HTTP server:
+      </p>
+      <pre><code>docker run -i --rm \
+  -v opencontext-data:/root/.opencontext \
+  adityakarnam/open-context:latest \
+  node dist/mcp/index.js</code></pre>
+      <p>
+        The <code>-i</code> flag matters here specifically because MCP speaks over stdio, not a network port —
+        it keeps the container's standard input open so a client can exchange protocol messages with the process
+        inside it. <code>docker-compose.yml</code> ships a dedicated <code>mcp</code> service that sets
+        <code>stdin_open: true</code> for the same reason. This is the mode Claude Code and Claude Desktop use
+        when you register open-context as an MCP server, exposing the
+        <a class="inline-link" href="/blog/mcp-tools-reference/">six context tools</a> — <code>save_context</code>,
+        <code>recall_context</code>, <code>list_contexts</code>, <code>search_contexts</code>,
+        <code>update_context</code>, and <code>delete_context</code> — directly to the model.
+      </p>
+      <p>Pointing Claude Code at it is a config entry, not a running container you manage yourself:</p>
+      <pre><code>{
+  "mcpServers": {
+    "open-context": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "-v", "opencontext-data:/root/.opencontext",
+               "adityakarnam/open-context:latest", "node", "dist/mcp/index.js"]
+    }
+  }
+}</code></pre>
+      <p>Claude Code starts and stops the container itself, once per session, using exactly that command.</p>
+
+      <h2>Mode 3 — a one-off CLI conversion</h2>
+      <p>
+        The same image also contains the <code>opencontext</code> CLI entry point, <code>dist/index.js</code>.
+        Override the command again to run a single ChatGPT export conversion and exit, rather than starting a
+        server at all:
+      </p>
+      <pre><code>docker run --rm \
+  -v "$(pwd)/chatgpt-export.zip:/data/export.zip:ro" \
+  -v "$(pwd)/output:/data/output" \
+  adityakarnam/open-context:latest \
+  node dist/index.js convert /data/export.zip -o /data/output</code></pre>
+      <p>
+        This mode doesn't need the <code>opencontext-data</code> volume used by the other two — it's a batch
+        job, not a long-running process, so the container exits once the conversion finishes. Instead you
+        bind-mount the input ZIP and an output directory so the generated <code>preferences.md</code>,
+        <code>memory.md</code>, and <code>conversations/</code> files land back on your host. Flags like
+        <code>--skip-preferences</code> and <code>--ollama-host</code> work exactly as they do outside Docker.
+      </p>
+
+      <h2>Keeping the default image small</h2>
+      <p>
+        Most of open-context's 15 database backends are optional peer dependencies, and the <code>Dockerfile</code>
+        accepts a <code>DB_DRIVERS</code> build argument so the default image installs none of them — it still
+        works out of the box with the built-in JSON file, in-memory, SQLite, and Cloudflare D1 backends, since
+        D1 talks to Cloudflare's API over plain HTTP. If you want the context store on Postgres, MongoDB, or
+        another driver-backed database, bake the driver in at build time instead of pulling it in at runtime:
+      </p>
+      <pre><code>docker build --build-arg DB_DRIVERS="pg" -t opencontext .
+docker build --build-arg DB_DRIVERS="mongodb redis" -t opencontext .</code></pre>
+
+      <h2>One volume, shared across all three modes</h2>
+      <p>
+        Because every mode is the same image mounting the same path, <code>/root/.opencontext/</code> is the
+        one place state actually lives, regardless of which command started the container:
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>File</th><th>Written by</th></tr></thead>
+          <tbody>
+            <tr><td><code>preferences.json</code></td><td>UI / HTTP server, CLI convert</td></tr>
+            <tr><td><code>preferences.md</code>, <code>memory.md</code></td><td>UI / HTTP server, CLI convert</td></tr>
+            <tr><td><code>contexts.json</code></td><td>MCP server, HTTP server</td></tr>
+            <tr><td><code>config.json</code></td><td>UI / HTTP server (saved database connection string, <code>0600</code> permissions)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Mount the same named volume into the HTTP server container and the MCP server container — exactly what
+        <code>docker compose up app mcp</code> does — and context Claude saves through MCP shows up in the
+        dashboard, and preferences you edit in the dashboard are what Claude reads back, without copying anything
+        between them.
+      </p>
+
+      <div class="cta">
+        <p style="margin:0; color: var(--muted);">Run the UI, the MCP server, or a one-off conversion — same image, same volume.</p>
+        <a href="/">Get started with open-context →</a>
+      </div>
+
+      <h2>FAQ</h2>
+
+      <h3>Do I need three different Docker images for open-context?</h3>
+      <p>No. There is one image, <code>adityakarnam/open-context:latest</code>, built from a single multi-stage Dockerfile. Which mode it runs — HTTP server, MCP stdio server, or CLI converter — depends only on the command you pass to <code>docker run</code>, not on a different build.</p>
+
+      <h3>Can I run the HTTP server and the MCP server from open-context at the same time?</h3>
+      <p>Yes. The repo's <code>docker-compose.yml</code> defines an <code>app</code> service (HTTP server) and an <code>mcp</code> service (stdio MCP server) built from the same image, and both can mount the same <code>opencontext-data</code> volume so they share preferences and context.</p>
+
+      <h3>Why does open-context's MCP mode need the -i flag on docker run?</h3>
+      <p>MCP servers communicate over stdio rather than a network port. The <code>-i</code> flag keeps the container's standard input open so Claude Code or Claude Desktop can exchange MCP protocol messages with the process inside the container.</p>
+
+      <h3>How do I add a database driver like Postgres without bloating the default open-context image?</h3>
+      <p>Build with a <code>DB_DRIVERS</code> build argument, for example <code>docker build --build-arg DB_DRIVERS="pg" -t opencontext .</code> The default build installs no optional drivers, so the image stays small and still works with the built-in JSON, SQLite, in-memory, and Cloudflare D1 backends.</p>
+
+      <h3>Does the CLI conversion mode need the same persistent volume as the server and MCP modes?</h3>
+      <p>Only if you also want its output to land in the shared context store. A one-off conversion typically bind-mounts an input ZIP and an output directory directly, since the container exits once the conversion finishes.</p>
+    </article>
+  </main>
+
+  <footer>
+    <span>open-context.dev — open source, self-hosted</span>
+    <div>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a href="https://hub.docker.com/r/adityakarnam/opencontext" target="_blank" rel="noopener noreferrer">Docker Hub</a>
+    </div>
+  </footer>
+</body>
+</html>
