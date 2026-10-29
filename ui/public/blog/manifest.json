@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "markdown-export-format",
+      "title": "Why open-context Exports Conversations as Markdown",
+      "publishedAt": "2026-10-29",
+      "topicTag": "markdown-export-format"
+    },
+    {
       "slug": "docker-single-image-three-modes",
       "title": "One open-context Docker Image, Three Ways to Run It",
       "publishedAt": "2026-10-27",
@@ -248,7 +254,6 @@
     }
   ],
   "backlog": [
-    { "topicTag": "markdown-export-format", "workingTitle": "Why open-context Exports Conversations as Markdown" },
     { "topicTag": "zip-extraction-safety", "workingTitle": "How open-context Safely Extracts Your ChatGPT Export ZIP" },
     { "topicTag": "preferences-editor-sections", "workingTitle": "Inside the 6 Sections of the open-context Preferences Editor" }
   ]

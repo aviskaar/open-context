@@ -11,6 +11,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://open-context.dev/blog/markdown-export-format/</loc>
+    <lastmod>2026-10-29</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://open-context.dev/blog/docker-single-image-three-modes/</loc>
     <lastmod>2026-10-27</lastmod>
     <changefreq>monthly</changefreq>
