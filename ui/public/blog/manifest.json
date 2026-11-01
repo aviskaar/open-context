@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "preferences-editor-sections",
+      "title": "Inside the 6 Sections of the open-context Preferences Editor",
+      "publishedAt": "2026-11-01",
+      "topicTag": "preferences-editor-sections"
+    },
+    {
       "slug": "zip-extraction-safety",
       "title": "How open-context Guards Against Zip Slip on ChatGPT Exports",
       "publishedAt": "2026-10-31",
@@ -259,7 +265,5 @@
       "topicTag": "bubbles-project-workspaces"
     }
   ],
-  "backlog": [
-    { "topicTag": "preferences-editor-sections", "workingTitle": "Inside the 6 Sections of the open-context Preferences Editor" }
-  ]
+  "backlog": []
 }
