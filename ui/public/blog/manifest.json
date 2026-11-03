@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "optional-peer-dependencies",
+      "title": "How open-context Avoids Installing 15 Database Drivers",
+      "publishedAt": "2026-11-03",
+      "topicTag": "optional-peer-dependencies-pattern"
+    },
+    {
       "slug": "preferences-editor-sections",
       "title": "Inside the 6 Sections of the open-context Preferences Editor",
       "publishedAt": "2026-11-01",
@@ -265,5 +271,22 @@
       "topicTag": "bubbles-project-workspaces"
     }
   ],
-  "backlog": []
+  "backlog": [
+    {
+      "topicTag": "normalized-conversation-schema",
+      "workingTitle": "The Normalized Conversation Schema Behind Every open-context Export"
+    },
+    {
+      "topicTag": "cli-batch-convert-usage",
+      "workingTitle": "Batch-Converting ChatGPT Exports With the open-context CLI"
+    },
+    {
+      "topicTag": "react-context-state-no-redux",
+      "workingTitle": "Why open-context's UI Uses React Context Instead of Redux"
+    },
+    {
+      "topicTag": "mcp-stdio-vs-http-transport",
+      "workingTitle": "MCP Stdio vs. HTTP: How Claude Talks to a Local Tool"
+    }
+  ]
 }
