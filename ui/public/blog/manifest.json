@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "normalized-conversation-schema",
+      "title": "The Normalized Conversation Schema Every Export Uses",
+      "publishedAt": "2026-11-05",
+      "topicTag": "normalized-conversation-schema"
+    },
+    {
       "slug": "optional-peer-dependencies",
       "title": "How open-context Avoids Installing 15 Database Drivers",
       "publishedAt": "2026-11-03",
@@ -272,10 +278,6 @@
     }
   ],
   "backlog": [
-    {
-      "topicTag": "normalized-conversation-schema",
-      "workingTitle": "The Normalized Conversation Schema Behind Every open-context Export"
-    },
     {
       "topicTag": "cli-batch-convert-usage",
       "workingTitle": "Batch-Converting ChatGPT Exports With the open-context CLI"
