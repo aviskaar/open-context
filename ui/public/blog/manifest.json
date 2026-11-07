@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "cli-batch-convert-usage",
+      "title": "Batch-Converting Multiple ChatGPT Exports With the CLI",
+      "publishedAt": "2026-11-07",
+      "topicTag": "cli-batch-convert-usage"
+    },
+    {
       "slug": "normalized-conversation-schema",
       "title": "The Normalized Conversation Schema Every Export Uses",
       "publishedAt": "2026-11-05",
@@ -278,10 +284,6 @@
     }
   ],
   "backlog": [
-    {
-      "topicTag": "cli-batch-convert-usage",
-      "workingTitle": "Batch-Converting ChatGPT Exports With the open-context CLI"
-    },
     {
       "topicTag": "react-context-state-no-redux",
       "workingTitle": "Why open-context's UI Uses React Context Instead of Redux"
