@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "react-context-state-no-redux",
+      "title": "Why open-context Uses React Context Instead of Redux",
+      "publishedAt": "2026-11-09",
+      "topicTag": "react-context-state-no-redux"
+    },
+    {
       "slug": "cli-batch-convert-usage",
       "title": "Batch-Converting Multiple ChatGPT Exports With the CLI",
       "publishedAt": "2026-11-07",
@@ -284,10 +290,6 @@
     }
   ],
   "backlog": [
-    {
-      "topicTag": "react-context-state-no-redux",
-      "workingTitle": "Why open-context's UI Uses React Context Instead of Redux"
-    },
     {
       "topicTag": "mcp-stdio-vs-http-transport",
       "workingTitle": "MCP Stdio vs. HTTP: How Claude Talks to a Local Tool"

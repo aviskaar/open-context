@@ -11,6 +11,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://open-context.dev/blog/react-context-state-no-redux/</loc>
+    <lastmod>2026-11-09</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://open-context.dev/blog/cli-batch-convert-usage/</loc>
     <lastmod>2026-11-07</lastmod>
     <changefreq>monthly</changefreq>
