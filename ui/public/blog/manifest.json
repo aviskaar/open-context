@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "mcp-stdio-vs-http-transport",
+      "title": "MCP Stdio vs. HTTP Transport: How Claude Talks to Tools",
+      "publishedAt": "2026-11-11",
+      "topicTag": "mcp-stdio-vs-http-transport"
+    },
+    {
       "slug": "react-context-state-no-redux",
       "title": "Why open-context Uses React Context Instead of Redux",
       "publishedAt": "2026-11-09",
@@ -291,8 +297,24 @@
   ],
   "backlog": [
     {
-      "topicTag": "mcp-stdio-vs-http-transport",
-      "workingTitle": "MCP Stdio vs. HTTP: How Claude Talks to a Local Tool"
+      "topicTag": "ollama-context-length-tuning",
+      "workingTitle": "Tuning Ollama's Context Window for Better Preference Analysis"
+    },
+    {
+      "topicTag": "express-rest-api-vs-mcp-server",
+      "workingTitle": "REST API or MCP Server: Which open-context Interface Should You Use"
+    },
+    {
+      "topicTag": "mcp-tool-error-handling",
+      "workingTitle": "How open-context's MCP Tools Report Errors Back to Claude"
+    },
+    {
+      "topicTag": "vite-public-dir-static-blog",
+      "workingTitle": "Why open-context's Blog Is Plain HTML, Not React Routes"
+    },
+    {
+      "topicTag": "mongodb-vs-firestore-document-store",
+      "workingTitle": "MongoDB vs. Firestore: Comparing open-context's Document Adapters"
     }
   ]
 }
