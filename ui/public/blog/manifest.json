@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "ollama-context-length-tuning",
+      "title": "Tuning Ollama's num_ctx for Better Preference Analysis",
+      "publishedAt": "2026-11-13",
+      "topicTag": "ollama-context-length-tuning"
+    },
+    {
       "slug": "mcp-stdio-vs-http-transport",
       "title": "MCP Stdio vs. HTTP Transport: How Claude Talks to Tools",
       "publishedAt": "2026-11-11",
@@ -296,10 +302,6 @@
     }
   ],
   "backlog": [
-    {
-      "topicTag": "ollama-context-length-tuning",
-      "workingTitle": "Tuning Ollama's Context Window for Better Preference Analysis"
-    },
     {
       "topicTag": "express-rest-api-vs-mcp-server",
       "workingTitle": "REST API or MCP Server: Which open-context Interface Should You Use"
