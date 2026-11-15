@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "rest-api-vs-mcp-server",
+      "title": "REST API vs. MCP Server: Which Interface Should You Use",
+      "publishedAt": "2026-11-15",
+      "topicTag": "express-rest-api-vs-mcp-server"
+    },
+    {
       "slug": "ollama-context-length-tuning",
       "title": "Tuning Ollama's num_ctx for Better Preference Analysis",
       "publishedAt": "2026-11-13",
@@ -302,10 +308,6 @@
     }
   ],
   "backlog": [
-    {
-      "topicTag": "express-rest-api-vs-mcp-server",
-      "workingTitle": "REST API or MCP Server: Which open-context Interface Should You Use"
-    },
     {
       "topicTag": "mcp-tool-error-handling",
       "workingTitle": "How open-context's MCP Tools Report Errors Back to Claude"
