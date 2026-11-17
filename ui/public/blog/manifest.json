@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "mcp-tool-error-handling",
+      "title": "How open-context's MCP Tools Report Errors Back to Claude",
+      "publishedAt": "2026-11-17",
+      "topicTag": "mcp-tool-error-handling"
+    },
+    {
       "slug": "rest-api-vs-mcp-server",
       "title": "REST API vs. MCP Server: Which Interface Should You Use",
       "publishedAt": "2026-11-15",
@@ -308,10 +314,6 @@
     }
   ],
   "backlog": [
-    {
-      "topicTag": "mcp-tool-error-handling",
-      "workingTitle": "How open-context's MCP Tools Report Errors Back to Claude"
-    },
     {
       "topicTag": "vite-public-dir-static-blog",
       "workingTitle": "Why open-context's Blog Is Plain HTML, Not React Routes"
