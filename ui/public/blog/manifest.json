@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "vite-public-dir-static-blog",
+      "title": "Why open-context's Blog Is Plain HTML, Not React Routes",
+      "publishedAt": "2026-11-19",
+      "topicTag": "vite-public-dir-static-blog"
+    },
+    {
       "slug": "mcp-tool-error-handling",
       "title": "How open-context's MCP Tools Report Errors Back to Claude",
       "publishedAt": "2026-11-17",
@@ -314,10 +320,6 @@
     }
   ],
   "backlog": [
-    {
-      "topicTag": "vite-public-dir-static-blog",
-      "workingTitle": "Why open-context's Blog Is Plain HTML, Not React Routes"
-    },
     {
       "topicTag": "mongodb-vs-firestore-document-store",
       "workingTitle": "MongoDB vs. Firestore: Comparing open-context's Document Adapters"
