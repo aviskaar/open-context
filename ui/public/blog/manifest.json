@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "mongodb-vs-firestore-document-store",
+      "title": "MongoDB vs. Firestore: Choosing an MCP Context Store",
+      "publishedAt": "2026-11-21",
+      "topicTag": "mongodb-vs-firestore-document-store"
+    },
+    {
       "slug": "vite-public-dir-static-blog",
       "title": "Why open-context's Blog Is Plain HTML, Not React Routes",
       "publishedAt": "2026-11-19",
@@ -321,8 +327,24 @@
   ],
   "backlog": [
     {
-      "topicTag": "mongodb-vs-firestore-document-store",
-      "workingTitle": "MongoDB vs. Firestore: Comparing open-context's Document Adapters"
+      "topicTag": "ollama-vs-cloud-llm-cost",
+      "workingTitle": "Ollama vs. Hosted LLM APIs: The Real Cost of Preference Analysis"
+    },
+    {
+      "topicTag": "markdown-vs-json-ai-context",
+      "workingTitle": "Why Markdown Beats JSON for Feeding Claude Your Chat History"
+    },
+    {
+      "topicTag": "cli-vs-web-ui-conversion",
+      "workingTitle": "CLI or Web UI: Which open-context Interface Fits Your Workflow"
+    },
+    {
+      "topicTag": "mcp-resources-vs-tools",
+      "workingTitle": "MCP Resources vs. Tools: Why open-context Only Needs Tools"
+    },
+    {
+      "topicTag": "surrealdb-multi-model-mcp-store",
+      "workingTitle": "SurrealDB as an MCP Context Store: What Multi-Model Buys You"
     }
   ]
 }

@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="/opencontext-logo.png" />
+  <title>MongoDB vs. Firestore: Choosing an MCP Context Store</title>
+  <meta name="description" content="MongoDB and Firestore both back open-context's MCP memory store through the same document adapter interface. Here's how they differ in auth, limits, and setup." />
+  <link rel="canonical" href="https://open-context.dev/blog/mongodb-vs-firestore-document-store/" />
+  <meta property="og:title" content="MongoDB vs. Firestore: Choosing an MCP Context Store" />
+  <meta property="og:description" content="MongoDB and Firestore both back open-context's MCP memory store through the same document adapter interface. Here's how they differ in auth, limits, and setup." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://open-context.dev/blog/mongodb-vs-firestore-document-store/" />
+  <meta property="og:image" content="https://open-context.dev/opencontext-logo.png" />
+  <meta property="article:published_time" content="2026-11-21" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="MongoDB vs. Firestore: Choosing an MCP Context Store" />
+  <meta name="twitter:description" content="How MongoDB and Firestore each store MCP context entries in open-context, where their limits and auth models actually diverge, and how to pick between them." />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BlogPosting",
+        "headline": "MongoDB vs. Firestore: Choosing an MCP Context Store",
+        "description": "MongoDB and Firestore both back open-context's MCP memory store through the same document adapter interface. Here's how they differ in auth, limits, and setup.",
+        "datePublished": "2026-11-21",
+        "dateModified": "2026-11-21",
+        "mainEntityOfPage": { "@type": "WebPage", "@id": "https://open-context.dev/blog/mongodb-vs-firestore-document-store/" },
+        "image": "https://open-context.dev/opencontext-logo.png",
+        "author": { "@type": "Organization", "name": "open-context", "url": "https://open-context.dev/" },
+        "publisher": {
+          "@type": "Organization",
+          "name": "open-context",
+          "logo": { "@type": "ImageObject", "url": "https://open-context.dev/opencontext-logo.png" }
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Does open-context require MongoDB or Firestore?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. The default store is a local JSON file at ~/.opencontext/contexts.json and needs no setup at all. MongoDB and Firestore are two of 15 optional backends you point open-context at by setting OPENCONTEXT_DB_URL, useful once you already run one of them or need a shared, remote store." }
+          },
+          {
+            "@type": "Question",
+            "name": "Which has the larger document size limit, MongoDB or Firestore?",
+            "acceptedAnswer": { "@type": "Answer", "text": "MongoDB, by a wide margin. A MongoDB document caps out at 16 mebibytes of BSON. Firestore's Native-mode limit, the mode open-context's driver uses, is 1 mebibyte per document — so a single saved context that's fine on MongoDB can be rejected on Firestore if it approaches that size." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does open-context store database credentials for Firestore the way it does for MongoDB?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. A MongoDB connection string carries a username and password, redacted before it's ever logged or shown in the UI. Firestore's connection string is just a project id — open-context authenticates through Google's Application Default Credentials chain instead, so no secret needs to live in OPENCONTEXT_DB_URL at all." }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I run MongoDB or Firestore locally for testing?",
+            "acceptedAnswer": { "@type": "Answer", "text": "MongoDB, yes — run it in a container and point OPENCONTEXT_DB_URL at mongodb://localhost:27017/opencontext. Firestore has no official self-hosted mode; it only exists as a Google Cloud service, though Google ships a local emulator for the Firestore client libraries if you need to test without touching a live project." }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I switch from MongoDB to Firestore, or back, without losing data?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Run opencontext db migrate --to \"<connection-string>\" and it copies every context and bubble from whichever store is currently active into the new one. It only reads the source store, so nothing there is modified or deleted." }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <style>
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Regular-Trial-BF63f6cbd970ee9.otf') format('opentype'); font-weight: 400; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Medium-Trial-BF63f6cbdb24b6d.otf') format('opentype'); font-weight: 500; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Bold-Trial-BF63f6cbda1877f.otf') format('opentype'); font-weight: 700; font-style: normal; }
+
+    :root {
+      --bg: #000000;
+      --card: #0a0a0a;
+      --border: #262626;
+      --fg: #fafafa;
+      --muted: #a1a1aa;
+      --accent: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Styrene A', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.7;
+    }
+    a { color: inherit; }
+    header {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; gap: 1.5rem;
+      padding: 0.9rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.9);
+      backdrop-filter: blur(6px);
+    }
+    header .brand { display: flex; align-items: center; gap: 0.5rem; margin-right: auto; text-decoration: none; }
+    header .brand img { width: 32px; height: 32px; border-radius: 3px; }
+    header .brand span { font-size: 0.9rem; font-weight: 600; letter-spacing: -0.01em; }
+    header nav { display: flex; align-items: center; gap: 1.5rem; font-size: 0.875rem; color: var(--muted); }
+    header nav a { text-decoration: none; }
+    header nav a:hover, header nav a.active { color: var(--fg); }
+
+    main { max-width: 720px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+    .meta { font-size: 0.8rem; color: var(--muted); font-family: monospace; margin-bottom: 0.75rem; }
+    h1 { font-size: 2.1rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; margin: 0 0 1.5rem; }
+    h2 { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.01em; margin: 2.5rem 0 1rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin: 1.75rem 0 0.6rem; }
+    p { color: #e4e4e7; margin: 0 0 1.1rem; }
+    p.lead { font-size: 1.1rem; color: var(--fg); }
+    ul, ol { color: #e4e4e7; padding-left: 1.3rem; margin: 0 0 1.1rem; }
+    li { margin-bottom: 0.4rem; }
+    code { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85em; }
+    pre { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto; font-size: 0.85rem; }
+    pre code { border: none; padding: 0; background: none; }
+    a.inline-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+    .takeaways {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin: 1.5rem 0 2.5rem;
+    }
+    .takeaways p.label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.7rem; color: var(--accent); font-weight: 600; margin: 0 0 0.75rem; }
+    .takeaways ul { margin: 0; }
+    .table-wrap { overflow-x: auto; margin: 0 0 1.1rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
+    th { color: var(--muted); font-weight: 600; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+    .cta {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin: 2.5rem 0;
+      text-align: center;
+    }
+    .cta a {
+      display: inline-block;
+      margin-top: 0.75rem;
+      background: var(--fg);
+      color: #000;
+      font-weight: 600;
+      padding: 0.55rem 1.25rem;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 0.75rem;
+      font-size: 0.75rem; color: var(--muted);
+    }
+    footer a { text-decoration: none; margin-left: 1rem; }
+    footer a:hover { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">
+      <img src="/opencontext-logo.png" alt="open-context" />
+      <span>open-context</span>
+    </a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/blog/" class="active">Blog</a>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <div class="meta">November 21, 2026 · 7 min read</div>
+      <h1>MongoDB vs. Firestore: Choosing an MCP Context Store</h1>
+
+      <p class="lead">
+        Pick MongoDB if you want a document store you can self-host, run in a container, or manage
+        through Atlas with full control over connection credentials. Pick Firestore if you're already
+        on Google Cloud and would rather authenticate through IAM than carry a password in a connection
+        string. Both are two of <a class="inline-link" href="/">open-context</a>'s 15 supported MCP
+        context-store backends, both implement the exact same document-adapter interface, and — somewhat
+        counterintuitively — Firestore's per-document size limit is actually smaller than MongoDB's, not
+        larger.
+      </p>
+
+      <div class="takeaways">
+        <p class="label">Key takeaways</p>
+        <ul>
+          <li>MongoDB and Firestore both implement open-context's shared <code>DocumentDriver</code> interface — six methods (<code>connect</code>, <code>close</code>, <code>ping</code>, <code>get</code>, <code>put</code>, <code>remove</code>, <code>list</code>) also used by the Redis and DynamoDB backends.</li>
+          <li>MongoDB can be self-hosted, run in Docker, or used via Atlas; Firestore exists only as a Google Cloud service, authenticated through Application Default Credentials rather than a password in the connection string.</li>
+          <li>MongoDB caps a single document at 16 mebibytes of BSON. Firestore's Native-mode limit — the mode open-context's driver uses — is 1 mebibyte per document, eight times smaller.</li>
+          <li>Neither backend has a portable case-insensitive substring query, so <code>recall_context</code> and <code>search_contexts</code> read the whole collection and filter in memory on both — the same tradeoff Redis and DynamoDB make.</li>
+          <li>Switching between them, or to any of open-context's other 13 backends, is a single <code>opencontext db migrate</code> command that only reads the source store.</li>
+        </ul>
+      </div>
+
+      <h2>Same interface, two different kinds of database</h2>
+      <p>
+        MongoDB and Firestore both sit behind open-context's <code>DocumentDriver</code> interface, the
+        shared contract that also backs Redis and DynamoDB. Search, tag filtering, result ordering, and
+        cascading a bubble delete across its contexts are all written once in the document adapter — a
+        new backend only has to supply <code>connect</code>, <code>close</code>, <code>ping</code>,
+        <code>get</code>, <code>put</code>, <code>remove</code>, and <code>list</code>. That's why
+        <code>save_context</code>, <code>recall_context</code>, and the rest of open-context's MCP tools
+        behave identically whichever one is active.
+      </p>
+      <p>
+        But the two databases themselves start from very different assumptions. MongoDB is a
+        general-purpose document database you can run anywhere — a laptop, a Docker container, your own
+        server, or a managed Atlas cluster. Firestore is Google Cloud's native document database: there's
+        no process to install, no port to open, just a project id and a client library that talks to
+        Google's infrastructure directly.
+      </p>
+
+      <h2>How open-context talks to each one</h2>
+      <p>
+        The MongoDB driver stores contexts and bubbles in two collections, <code>oc_contexts</code> and
+        <code>oc_bubbles</code>, keyed by Mongo's own <code>_id</code> set to open-context's id — so a
+        lookup by id is a primary-key hit, not a scan. It also builds two indexes on connect,
+        <code>bubbleId</code> and <code>createdAt</code>, and sets <code>ignoreUndefined: true</code> on
+        the client so an absent <code>bubbleId</code> or <code>description</code> stays genuinely absent
+        instead of being written as BSON <code>null</code> — the one detail that keeps MongoDB's behavior
+        consistent with every other backend in the conformance suite.
+      </p>
+      <p>
+        The connection string itself gets normalized before it reaches the driver: open-context accepts
+        a <code>mongo://</code> alias and any casing, but the Node MongoDB driver only accepts
+        <code>mongodb://</code> or <code>mongodb+srv://</code>, case-sensitively, so a rewrite step
+        corrects the scheme while preserving <code>+srv</code> — dropping it would silently break an
+        Atlas connection by turning an SRV lookup into a direct connection to a host that doesn't answer.
+      </p>
+      <p>
+        The Firestore driver uses the same two-collection layout, but connects lazily — there's nothing
+        to open eagerly, since the client library establishes its connection on first use. It
+        authenticates through Google's Application Default Credentials chain, the same mechanism every
+        other Google client library uses, so the connection string carries only a project id and never a
+        secret.
+      </p>
+
+      <h2>Where they actually diverge</h2>
+
+      <h3>Document size: Firestore is the stricter one</h3>
+      <p>
+        This is the detail most people get backwards. MongoDB's BSON format caps a single document at
+        16 mebibytes
+        (<a class="inline-link" href="https://www.mongodb.com/docs/manual/core/document/" target="_blank" rel="noopener noreferrer">MongoDB Manual: Documents</a>) —
+        large enough that a saved context would have to be extraordinarily long to hit it. Firestore in
+        Native mode, which is what open-context's <code>@google-cloud/firestore</code> client talks to,
+        caps a single document at 1 mebibyte
+        (<a class="inline-link" href="https://docs.cloud.google.com/firestore/quotas" target="_blank" rel="noopener noreferrer">Google Cloud: Firestore quotas and limits</a>).
+        Eight times smaller than MongoDB's, despite Firestore being the newer, fully managed option. A
+        very long pasted conversation saved as one context could fit comfortably on MongoDB and still get
+        rejected on Firestore.
+      </p>
+
+      <h3>Authentication: a secret in the URL vs. no secret at all</h3>
+      <p>
+        A MongoDB connection string is <code>mongodb://user:pass@host:27017/db</code> — the credential
+        lives right there, which is why open-context redacts it from every log line, API response, and UI
+        field before it's ever shown. Firestore's connection string is just <code>firestore://PROJECT_ID</code>;
+        there's no password to redact because there isn't one in the DSN. Authorization comes from whatever
+        service account or user credentials are already active in the environment via Application Default
+        Credentials — the right call when open-context already runs inside Google Cloud infrastructure that
+        has IAM configured, and a mismatch if it doesn't.
+      </p>
+
+      <h3>Where it can run</h3>
+      <p>
+        MongoDB has no cloud lock-in: run it in Docker for local development, on your own VM, or through
+        Atlas, Azure Cosmos DB's Mongo API, or any other managed Mongo-compatible service. Firestore only
+        exists as a Google Cloud service — there's no self-hosted Firestore, though Google does ship a
+        local emulator for the client libraries if you want to test the driver without touching a live
+        project.
+      </p>
+
+      <h2>Setting each one up</h2>
+      <p>MongoDB needs a full connection string and its optional driver package:</p>
+      <pre><code>export OPENCONTEXT_DB_URL="mongodb://user:pass@localhost:27017/opencontext"
+npm i mongodb</code></pre>
+      <p>Firestore needs only a project id — the database segment defaults to <code>(default)</code>:</p>
+      <pre><code>export OPENCONTEXT_DB_URL="firestore://my-gcp-project"
+npm i @google-cloud/firestore</code></pre>
+      <p>
+        Both packages are optional peer dependencies, like every one of open-context's 15 backends — the
+        default install and the Docker image stay small because nothing is pulled in until a DSN actually
+        asks for that scheme.
+      </p>
+
+      <h2>What's identical no matter which you pick</h2>
+      <p>
+        Both backends are checked against the same roughly 50-test conformance suite covered in
+        <a class="inline-link" href="/blog/firestore-dynamodb-mcp-store/">Firestore vs. DynamoDB for a serverless store</a> —
+        it's the only definition of correct behavior open-context has, and it never gets relaxed to make
+        a backend pass. Every list method on both backends returns results ordered by
+        <code>createdAt</code> ascending then <code>id</code> ascending, byte-identically to every SQL
+        backend. And both pay the same tax covered in
+        <a class="inline-link" href="/blog/redis-mongodb-mcp-store/">Redis vs. MongoDB for an MCP store</a>:
+        neither has a portable case-insensitive substring predicate, so <code>recall_context</code> and
+        <code>search_contexts</code> read the whole collection into memory and filter there. The results
+        match a SQL backend exactly — just not as fast once the store gets large.
+      </p>
+
+      <h2>Which one to choose</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th></th><th>MongoDB</th><th>Firestore</th></tr></thead>
+          <tbody>
+            <tr><td>Where it runs</td><td>Anywhere — self-hosted, Docker, Atlas, Cosmos DB</td><td>Google Cloud only; no self-hosted option</td></tr>
+            <tr><td>Credentials</td><td>User/password in the connection string, redacted by open-context</td><td>Application Default Credentials chain — no secret in the DSN</td></tr>
+            <tr><td>Max document size</td><td>16 MiB (BSON)</td><td>1 MiB (Native mode)</td></tr>
+            <tr><td>Connection string</td><td><code>mongodb://user:pass@host:27017/db</code></td><td><code>firestore://my-project</code></td></tr>
+            <tr><td>Optional driver</td><td><code>mongodb</code></td><td><code>@google-cloud/firestore</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        If you're already running infrastructure outside Google Cloud, or you want to keep full control
+        over the database process and its credentials, MongoDB is the simpler fit. If open-context is
+        already deployed on Google Cloud with IAM configured, Firestore removes a password from the
+        picture entirely — just watch the 1 MiB document ceiling if you're saving long raw conversation
+        exports as single contexts rather than chunking them.
+      </p>
+
+      <div class="cta">
+        <p style="margin:0; color: var(--muted);">Point open-context at MongoDB, Firestore, or any of its 15 backends.</p>
+        <a href="/">Get started with open-context →</a>
+      </div>
+
+      <h2>FAQ</h2>
+
+      <h3>Does open-context require MongoDB or Firestore?</h3>
+      <p>No. The default store is a local JSON file at <code>~/.opencontext/contexts.json</code> and needs no setup at all. MongoDB and Firestore are two of 15 optional backends you point open-context at by setting <code>OPENCONTEXT_DB_URL</code>, useful once you already run one of them or need a shared, remote store.</p>
+
+      <h3>Which has the larger document size limit, MongoDB or Firestore?</h3>
+      <p>MongoDB, by a wide margin. A MongoDB document caps out at 16 mebibytes of BSON. Firestore's Native-mode limit, the mode open-context's driver uses, is 1 mebibyte per document — so a single saved context that's fine on MongoDB can be rejected on Firestore if it approaches that size.</p>
+
+      <h3>Does open-context store database credentials for Firestore the way it does for MongoDB?</h3>
+      <p>No. A MongoDB connection string carries a username and password, redacted before it's ever logged or shown in the UI. Firestore's connection string is just a project id — open-context authenticates through Google's Application Default Credentials chain instead, so no secret needs to live in <code>OPENCONTEXT_DB_URL</code> at all.</p>
+
+      <h3>Can I run MongoDB or Firestore locally for testing?</h3>
+      <p>MongoDB, yes — run it in a container and point <code>OPENCONTEXT_DB_URL</code> at <code>mongodb://localhost:27017/opencontext</code>. Firestore has no official self-hosted mode; it only exists as a Google Cloud service, though Google ships a local emulator for the Firestore client libraries if you need to test without touching a live project.</p>
+
+      <h3>Can I switch from MongoDB to Firestore, or back, without losing data?</h3>
+      <p>Yes. Run <code>opencontext db migrate --to "&lt;connection-string&gt;"</code> and it copies every context and bubble from whichever store is currently active into the new one. It only reads the source store, so nothing there is modified or deleted.</p>
+    </article>
+  </main>
+
+  <footer>
+    <span>open-context.dev — open source, self-hosted</span>
+    <div>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a href="https://hub.docker.com/r/adityakarnam/opencontext" target="_blank" rel="noopener noreferrer">Docker Hub</a>
+    </div>
+  </footer>
+</body>
+</html>
