@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "ollama-vs-cloud-llm-cost",
+      "title": "Ollama vs. Cloud APIs: What AI Preference Analysis Costs",
+      "publishedAt": "2026-11-23",
+      "topicTag": "ollama-vs-cloud-llm-cost"
+    },
+    {
       "slug": "mongodb-vs-firestore-document-store",
       "title": "MongoDB vs. Firestore: Choosing an MCP Context Store",
       "publishedAt": "2026-11-21",
@@ -326,10 +332,6 @@
     }
   ],
   "backlog": [
-    {
-      "topicTag": "ollama-vs-cloud-llm-cost",
-      "workingTitle": "Ollama vs. Hosted LLM APIs: The Real Cost of Preference Analysis"
-    },
     {
       "topicTag": "markdown-vs-json-ai-context",
       "workingTitle": "Why Markdown Beats JSON for Feeding Claude Your Chat History"

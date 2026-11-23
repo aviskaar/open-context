@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="/opencontext-logo.png" />
+  <title>Ollama vs. Cloud APIs: What AI Preference Analysis Costs</title>
+  <meta name="description" content="Ollama runs preference analysis for free but needs local RAM; hosted APIs bill per token with no setup. A worked cost comparison using real Claude API pricing." />
+  <link rel="canonical" href="https://open-context.dev/blog/ollama-vs-cloud-llm-cost/" />
+  <meta property="og:title" content="Ollama vs. Cloud APIs: What AI Preference Analysis Costs" />
+  <meta property="og:description" content="Ollama runs preference analysis for free but needs local RAM; hosted APIs bill per token with no setup. A worked cost comparison using real Claude API pricing." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://open-context.dev/blog/ollama-vs-cloud-llm-cost/" />
+  <meta property="og:image" content="https://open-context.dev/opencontext-logo.png" />
+  <meta property="article:published_time" content="2026-11-23" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Ollama vs. Cloud APIs: What AI Preference Analysis Costs" />
+  <meta name="twitter:description" content="A worked cost comparison of Ollama and hosted LLM APIs for open-context's preference analysis, using real published Claude API pricing." />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BlogPosting",
+        "headline": "Ollama vs. Cloud APIs: What AI Preference Analysis Costs",
+        "description": "Ollama runs preference analysis for free but needs local RAM; hosted APIs bill per token with no setup. A worked cost comparison using real Claude API pricing.",
+        "datePublished": "2026-11-23",
+        "dateModified": "2026-11-23",
+        "mainEntityOfPage": { "@type": "WebPage", "@id": "https://open-context.dev/blog/ollama-vs-cloud-llm-cost/" },
+        "image": "https://open-context.dev/opencontext-logo.png",
+        "author": { "@type": "Organization", "name": "open-context", "url": "https://open-context.dev/" },
+        "publisher": {
+          "@type": "Organization",
+          "name": "open-context",
+          "logo": { "@type": "ImageObject", "url": "https://open-context.dev/opencontext-logo.png" }
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Does open-context support using the Claude API or another hosted LLM API instead of Ollama?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Not yet. open-context's own FAQ says Claude API support isn't built, though it may be added later. Today, AI-powered preference and memory analysis runs only through Ollama." }
+          },
+          {
+            "@type": "Question",
+            "name": "How many AI calls does one conversion actually make?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Exactly two — one to generate the preferences document, one to generate the memory document — each built from the same conversation text and each capped at 100,000 input tokens." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is my conversation data ever sent anywhere besides my own Ollama instance?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. Conversation text reaches an LLM only when AI analysis is enabled, and only the Ollama host you configure receives it. Running with --skip-preferences skips the network call entirely." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does running a bigger Ollama model cost more money?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Not per token — Ollama doesn't meter usage. A bigger model costs more RAM or VRAM to load and more time per inference, which is a hardware and patience cost rather than a billing one." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is a hosted LLM API actually more expensive than Ollama?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Per token, no — one conversion runs a few cents at current published rates. The cost difference shows up at scale: batch conversions, shared deployments, and repeated iteration all multiply a hosted bill linearly, while Ollama's hardware cost stays fixed regardless of how many times you run it." }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <style>
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Regular-Trial-BF63f6cbd970ee9.otf') format('opentype'); font-weight: 400; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Medium-Trial-BF63f6cbdb24b6d.otf') format('opentype'); font-weight: 500; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Bold-Trial-BF63f6cbda1877f.otf') format('opentype'); font-weight: 700; font-style: normal; }
+
+    :root {
+      --bg: #000000;
+      --card: #0a0a0a;
+      --border: #262626;
+      --fg: #fafafa;
+      --muted: #a1a1aa;
+      --accent: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Styrene A', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.7;
+    }
+    a { color: inherit; }
+    header {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; gap: 1.5rem;
+      padding: 0.9rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.9);
+      backdrop-filter: blur(6px);
+    }
+    header .brand { display: flex; align-items: center; gap: 0.5rem; margin-right: auto; text-decoration: none; }
+    header .brand img { width: 32px; height: 32px; border-radius: 3px; }
+    header .brand span { font-size: 0.9rem; font-weight: 600; letter-spacing: -0.01em; }
+    header nav { display: flex; align-items: center; gap: 1.5rem; font-size: 0.875rem; color: var(--muted); }
+    header nav a { text-decoration: none; }
+    header nav a:hover, header nav a.active { color: var(--fg); }
+
+    main { max-width: 720px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+    .meta { font-size: 0.8rem; color: var(--muted); font-family: monospace; margin-bottom: 0.75rem; }
+    h1 { font-size: 2.1rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; margin: 0 0 1.5rem; }
+    h2 { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.01em; margin: 2.5rem 0 1rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin: 1.75rem 0 0.6rem; }
+    p { color: #e4e4e7; margin: 0 0 1.1rem; }
+    p.lead { font-size: 1.1rem; color: var(--fg); }
+    ul, ol { color: #e4e4e7; padding-left: 1.3rem; margin: 0 0 1.1rem; }
+    li { margin-bottom: 0.4rem; }
+    code { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85em; }
+    pre { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto; font-size: 0.85rem; }
+    pre code { border: none; padding: 0; background: none; }
+    a.inline-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+    .takeaways {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin: 1.5rem 0 2.5rem;
+    }
+    .takeaways p.label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.7rem; color: var(--accent); font-weight: 600; margin: 0 0 0.75rem; }
+    .takeaways ul { margin: 0; }
+    .table-wrap { overflow-x: auto; margin: 0 0 1.1rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
+    th { color: var(--muted); font-weight: 600; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+    .cta {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin: 2.5rem 0;
+      text-align: center;
+    }
+    .cta a {
+      display: inline-block;
+      margin-top: 0.75rem;
+      background: var(--fg);
+      color: #000;
+      font-weight: 600;
+      padding: 0.55rem 1.25rem;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 0.75rem;
+      font-size: 0.75rem; color: var(--muted);
+    }
+    footer a { text-decoration: none; margin-left: 1rem; }
+    footer a:hover { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">
+      <img src="/opencontext-logo.png" alt="open-context" />
+      <span>open-context</span>
+    </a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/blog/" class="active">Blog</a>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <div class="meta">November 23, 2026 · 6 min read</div>
+      <h1>Ollama vs. Cloud APIs: What AI Preference Analysis Costs</h1>
+
+      <p class="lead">
+        Running open-context's AI analysis through Ollama costs nothing per token — the price is local hardware,
+        5GB to 40GB of RAM or VRAM depending on which model you pick. Running the same two analysis calls through
+        a hosted LLM API instead costs real, metered money, but at current published rates a single conversion
+        runs about two cents on the cheapest model tier. For one person converting one ChatGPT export, the
+        hosted API is actually cheaper in raw dollars. <a class="inline-link" href="/">open-context</a> defaults
+        to Ollama anyway, because the real cost comparison isn't about a single run.
+      </p>
+
+      <div class="takeaways">
+        <p class="label">Key takeaways</p>
+        <ul>
+          <li>open-context's analyzer makes exactly two AI calls per conversion — one for communication preferences, one for factual memory — each capped at 100,000 input tokens.</li>
+          <li>Ollama has no per-token charge. The cost is hardware: open-context's four documented models range from 5GB RAM (<code>llama3:8b</code>) up to 40GB (<code>llama3:70b</code>).</li>
+          <li>At current published Claude API rates, the same two calls cost roughly $0.02 on the cheapest model tier and roughly $0.40 on a mid-tier model — cheap for one run, but it scales linearly with every conversion.</li>
+          <li>Conversation text only ever leaves your machine if you enable AI analysis, and only to the Ollama host you configure — never to a third party by default.</li>
+          <li>The real tradeoff is sunk hardware cost and slower local inference versus recurring per-token billing with zero setup — not "free vs. paid."</li>
+        </ul>
+      </div>
+
+      <h2>What open-context's AI analysis actually calls</h2>
+      <p>
+        <code>OllamaPreferenceAnalyzer</code> makes two calls to <code>ollama.generate()</code>:
+        <code>analyzePreferences()</code> and <code>analyzeMemory()</code>. Both build their prompt from the same
+        <code>prepareConversationText()</code> helper, which sorts conversations chronologically and stops adding
+        more once the text would exceed <code>maxTokens</code> (100,000, approximated as 400,000 characters). Each
+        call is priced — in token terms — independently, so a full conversion with AI analysis enabled can send up
+        to 100,000 input tokens twice: once for the preferences prompt, once for the memory prompt.
+      </p>
+      <p>
+        The two prompts ask for different things. <code>buildAnalysisPrompt()</code> asks for 2-3 paragraphs of
+        natural-language communication style, written as the user speaking. <code>buildMemoryPrompt()</code> asks
+        for three short sections — work context, personal context, top of mind — written in third person. Neither
+        prompt asks for anything long, so the output tokens on both calls stay small relative to the input.
+      </p>
+
+      <h2>The Ollama side of the ledger: hardware, not tokens</h2>
+      <p>
+        Ollama never meters a token. Instead, the cost is whatever machine the model needs to sit on.
+        open-context's README documents four supported models and what each one actually needs — see
+        <a class="inline-link" href="/blog/ollama-model-choice-preferences/">Ollama Model Sizes Explained</a> for
+        the full breakdown:
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Model</th><th>RAM / VRAM</th><th>Speed</th><th>Quality</th></tr></thead>
+          <tbody>
+            <tr><td><code>llama3:8b</code></td><td>5GB</td><td>Fast</td><td>Good</td></tr>
+            <tr><td><code>gpt-oss:20b</code> (default)</td><td>13GB</td><td>Medium</td><td>High</td></tr>
+            <tr><td><code>qwen2.5:32b</code></td><td>20GB</td><td>Medium</td><td>High</td></tr>
+            <tr><td><code>llama3:70b</code></td><td>40GB</td><td>Slow</td><td>Highest</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        That RAM or VRAM is a one-time cost, or a sunk cost if you already own the hardware for other reasons. It
+        doesn't change whether you convert one export or run the analyzer a thousand times. The tradeoff is
+        inference speed — a 40GB model on a CPU-only machine can take minutes per call — and the fact that you're
+        on the hook for keeping Ollama running and the model pulled.
+      </p>
+
+      <h2>The hosted-API side of the ledger: a worked example</h2>
+      <p>
+        open-context doesn't support a hosted LLM API today — its own FAQ is explicit that this isn't built yet —
+        but pricing one out is a useful way to see where the money actually goes.
+        <a class="inline-link" href="https://platform.claude.com/docs/en/about-claude/pricing" target="_blank" rel="noopener noreferrer">Anthropic's published Claude API rates</a>
+        give real numbers to work with. At the cheapest current tier, input tokens run $0.10 per million (for
+        prompts up to 100,000 tokens) and output tokens run $0.50 per million.
+      </p>
+      <p>
+        Two calls at the 100,000-token cap is 200,000 input tokens, or 0.2 million. At $0.10/MTok that's $0.02.
+        The generated preferences and memory documents are short — a few hundred tokens each — so even a generous
+        2,000 combined output tokens adds only about $0.001 at $0.50/MTok. One full conversion: about two cents.
+      </p>
+      <p>
+        Swap in a mid-tier model instead — $2 per million input tokens, $10 per million output tokens at the same
+        published rates — and the same run costs roughly $0.40 to $0.42. The per-conversion cost scales directly
+        with which model you point the analyzer at, something Ollama's flat-hardware pricing doesn't do at all.
+      </p>
+
+      <h2>Where the real cost shows up</h2>
+      <p>
+        Two cents sounds trivial, and for one person running one conversion, it is. The cost stops being trivial
+        in three places:
+      </p>
+      <p>
+        <strong>Batch conversions.</strong> <a class="inline-link" href="/blog/cli-batch-convert-usage/">Converting a folder of exports in a loop</a>
+        multiplies the hosted bill by every file — ten exports is twenty cents, a hundred is two dollars, on top
+        of whatever model tier you picked. Ollama's hardware cost doesn't move at all.
+      </p>
+      <p>
+        <strong>Shared deployments.</strong> Run open-context's Docker image for a team and every conversion
+        anyone triggers meters against the same API key. A local Ollama host behind the same container has a
+        fixed hardware cost no matter how many people use it.
+      </p>
+      <p>
+        <strong>Iteration.</strong> Tuning <code>buildAnalysisPrompt()</code> or trying a different model means
+        re-running the same conversations repeatedly during development. Each retry against a hosted API is
+        billed; each retry against Ollama is free.
+      </p>
+      <p>
+        There's also a cost that isn't denominated in dollars. open-context's README is specific about this:
+        conversation text only reaches an LLM when AI analysis is enabled, and only the Ollama host you configure
+        ever sees it — never a third party. See
+        <a class="inline-link" href="/blog/ollama-local-llm-privacy/">Why open-context Uses Ollama Instead of a Hosted LLM API</a>
+        for the privacy side of that design. Routing the same calls through a hosted API means your raw chat
+        history crosses someone else's network, in exchange for metered pricing instead of RAM.
+      </p>
+
+      <h2>Why open-context defaults to Ollama anyway</h2>
+      <p>
+        The default isn't about raw dollar cost for a single conversion — a hosted API usually wins that
+        comparison. It's about the combination of zero marginal cost per run, data that never leaves
+        infrastructure you control, and a batch or team workload where "times a hundred" matters more than
+        "times one." The Docker image reaches a host-machine Ollama instance automatically through
+        <code>host.docker.internal:11434</code>, which makes "point it at your own model" the path of least
+        resistance rather than an afterthought.
+      </p>
+
+      <h2>When a hosted API would make more sense</h2>
+      <p>
+        If you're converting one export, once, on a machine with no spare RAM for a local model, the math favors
+        a hosted API — a few cents beats downloading tens of gigabytes of model weights for a single run.
+        open-context's own FAQ leaves the door open for this: Claude API support "may" come later, but isn't
+        built today. Until then, <code>--skip-preferences</code> remains the actual zero-cost, zero-network
+        option — it skips AI analysis entirely and produces a markdown conversion in seconds.
+      </p>
+
+      <div class="cta">
+        <p style="margin:0; color: var(--muted);">Convert your own chat history, locally, with or without AI analysis.</p>
+        <a href="/">Get started with open-context →</a>
+      </div>
+
+      <h2>FAQ</h2>
+
+      <h3>Does open-context support using the Claude API or another hosted LLM API instead of Ollama?</h3>
+      <p>Not yet. open-context's own FAQ says Claude API support isn't built, though it may be added later. Today, AI-powered preference and memory analysis runs only through Ollama.</p>
+
+      <h3>How many AI calls does one conversion actually make?</h3>
+      <p>Exactly two — one to generate the preferences document, one to generate the memory document — each built from the same conversation text and each capped at 100,000 input tokens.</p>
+
+      <h3>Is my conversation data ever sent anywhere besides my own Ollama instance?</h3>
+      <p>No. Conversation text reaches an LLM only when AI analysis is enabled, and only the Ollama host you configure receives it. Running with <code>--skip-preferences</code> skips the network call entirely.</p>
+
+      <h3>Does running a bigger Ollama model cost more money?</h3>
+      <p>Not per token — Ollama doesn't meter usage. A bigger model costs more RAM or VRAM to load and more time per inference, which is a hardware and patience cost rather than a billing one.</p>
+
+      <h3>Is a hosted LLM API actually more expensive than Ollama?</h3>
+      <p>Per token, no — one conversion runs a few cents at current published rates. The cost difference shows up at scale: batch conversions, shared deployments, and repeated iteration all multiply a hosted bill linearly, while Ollama's hardware cost stays fixed regardless of how many times you run it.</p>
+    </article>
+  </main>
+
+  <footer>
+    <span>open-context.dev — open source, self-hosted</span>
+    <div>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a href="https://hub.docker.com/r/adityakarnam/opencontext" target="_blank" rel="noopener noreferrer">Docker Hub</a>
+    </div>
+  </footer>
+</body>
+</html>
