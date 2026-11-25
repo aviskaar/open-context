@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "cli-vs-web-ui-conversion",
+      "title": "CLI vs. Web UI: Which open-context Interface to Use",
+      "publishedAt": "2026-11-25",
+      "topicTag": "cli-vs-web-ui-conversion"
+    },
+    {
       "slug": "ollama-vs-cloud-llm-cost",
       "title": "Ollama vs. Cloud APIs: What AI Preference Analysis Costs",
       "publishedAt": "2026-11-23",
@@ -332,14 +338,6 @@
     }
   ],
   "backlog": [
-    {
-      "topicTag": "markdown-vs-json-ai-context",
-      "workingTitle": "Why Markdown Beats JSON for Feeding Claude Your Chat History"
-    },
-    {
-      "topicTag": "cli-vs-web-ui-conversion",
-      "workingTitle": "CLI or Web UI: Which open-context Interface Fits Your Workflow"
-    },
     {
       "topicTag": "mcp-resources-vs-tools",
       "workingTitle": "MCP Resources vs. Tools: Why open-context Only Needs Tools"
