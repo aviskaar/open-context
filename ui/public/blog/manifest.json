@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "slug": "mcp-resources-vs-tools",
+      "title": "MCP Resources vs. Tools: Why open-context Uses Only Tools",
+      "publishedAt": "2026-11-27",
+      "topicTag": "mcp-resources-vs-tools"
+    },
+    {
       "slug": "cli-vs-web-ui-conversion",
       "title": "CLI vs. Web UI: Which open-context Interface to Use",
       "publishedAt": "2026-11-25",
@@ -338,10 +344,6 @@
     }
   ],
   "backlog": [
-    {
-      "topicTag": "mcp-resources-vs-tools",
-      "workingTitle": "MCP Resources vs. Tools: Why open-context Only Needs Tools"
-    },
     {
       "topicTag": "surrealdb-multi-model-mcp-store",
       "workingTitle": "SurrealDB as an MCP Context Store: What Multi-Model Buys You"

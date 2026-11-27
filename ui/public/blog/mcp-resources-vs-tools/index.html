@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="/opencontext-logo.png" />
+  <title>MCP Resources vs. Tools: Why open-context Uses Only Tools</title>
+  <meta name="description" content="MCP resources are app-controlled context; tools are model-invoked actions. open-context exposes 13 MCP tools and zero resources — the reasoning, explained." />
+  <link rel="canonical" href="https://open-context.dev/blog/mcp-resources-vs-tools/" />
+  <meta property="og:title" content="MCP Resources vs. Tools: Why open-context Uses Only Tools" />
+  <meta property="og:description" content="MCP resources are app-controlled context; tools are model-invoked actions. open-context exposes 13 MCP tools and zero resources — the reasoning, explained." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://open-context.dev/blog/mcp-resources-vs-tools/" />
+  <meta property="og:image" content="https://open-context.dev/opencontext-logo.png" />
+  <meta property="article:published_time" content="2026-11-27" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="MCP Resources vs. Tools: Why open-context Uses Only Tools" />
+  <meta name="twitter:description" content="open-context's MCP server registers 13 tools and zero resources. Here's why a memory server is tools-shaped, and when resources would fit better." />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BlogPosting",
+        "headline": "MCP Resources vs. Tools: Why open-context Uses Only Tools",
+        "description": "MCP resources are app-controlled context; tools are model-invoked actions. open-context exposes 13 MCP tools and zero resources — the reasoning, explained.",
+        "datePublished": "2026-11-27",
+        "dateModified": "2026-11-27",
+        "mainEntityOfPage": { "@type": "WebPage", "@id": "https://open-context.dev/blog/mcp-resources-vs-tools/" },
+        "image": "https://open-context.dev/opencontext-logo.png",
+        "author": { "@type": "Organization", "name": "open-context", "url": "https://open-context.dev/" },
+        "publisher": {
+          "@type": "Organization",
+          "name": "open-context",
+          "logo": { "@type": "ImageObject", "url": "https://open-context.dev/opencontext-logo.png" }
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What's the practical difference between an MCP tool and an MCP resource?",
+            "acceptedAnswer": { "@type": "Answer", "text": "A tool is something the model decides to call based on the conversation; a resource is something the client or host application decides to attach to context regardless of what the model is doing. The MCP spec labels this model-controlled versus application-controlled." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does open-context's MCP server implement any resources?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. Its server (src/mcp/server.ts) registers 13 tools via server.tool() and contains no server.resource() calls — every capability it exposes is something Claude chooses to invoke." }
+          },
+          {
+            "@type": "Question",
+            "name": "Why not expose recall_context as a resource instead of a tool?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Because the decision to pull a memory back into context has to come from the model noticing it's relevant mid-conversation, not from the client attaching it ahead of time. That decision-making pattern is exactly what MCP tools are for." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does having 13 tools instead of 6 cost more tokens or slow Claude down?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Tool definitions do add to the context sent with each request, but it's the same tradeoff any MCP server with multiple tools makes. open-context keeps each tool narrowly scoped to one CRUD operation rather than one large multi-purpose tool, which keeps individual descriptions short even as the count grows." }
+          },
+          {
+            "@type": "Question",
+            "name": "Could an MCP server mix tools and resources together?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes — the spec supports exposing both, and many servers do, pairing model-invoked actions with application-attached reference data. open-context's current use case just hasn't needed a resource yet." }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <style>
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Regular-Trial-BF63f6cbd970ee9.otf') format('opentype'); font-weight: 400; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Medium-Trial-BF63f6cbdb24b6d.otf') format('opentype'); font-weight: 500; font-style: normal; }
+    @font-face { font-family: 'Styrene A'; src: url('/styrene-font-family/StyreneA-Bold-Trial-BF63f6cbda1877f.otf') format('opentype'); font-weight: 700; font-style: normal; }
+
+    :root {
+      --bg: #000000;
+      --card: #0a0a0a;
+      --border: #262626;
+      --fg: #fafafa;
+      --muted: #a1a1aa;
+      --accent: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Styrene A', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.7;
+    }
+    a { color: inherit; }
+    header {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; gap: 1.5rem;
+      padding: 0.9rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.9);
+      backdrop-filter: blur(6px);
+    }
+    header .brand { display: flex; align-items: center; gap: 0.5rem; margin-right: auto; text-decoration: none; }
+    header .brand img { width: 32px; height: 32px; border-radius: 3px; }
+    header .brand span { font-size: 0.9rem; font-weight: 600; letter-spacing: -0.01em; }
+    header nav { display: flex; align-items: center; gap: 1.5rem; font-size: 0.875rem; color: var(--muted); }
+    header nav a { text-decoration: none; }
+    header nav a:hover, header nav a.active { color: var(--fg); }
+
+    main { max-width: 720px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+    .meta { font-size: 0.8rem; color: var(--muted); font-family: monospace; margin-bottom: 0.75rem; }
+    h1 { font-size: 2.1rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; margin: 0 0 1.5rem; }
+    h2 { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.01em; margin: 2.5rem 0 1rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin: 1.75rem 0 0.6rem; }
+    p { color: #e4e4e7; margin: 0 0 1.1rem; }
+    p.lead { font-size: 1.1rem; color: var(--fg); }
+    ul, ol { color: #e4e4e7; padding-left: 1.3rem; margin: 0 0 1.1rem; }
+    li { margin-bottom: 0.4rem; }
+    code { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85em; }
+    pre { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto; font-size: 0.85rem; }
+    pre code { border: none; padding: 0; background: none; }
+    a.inline-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+    .takeaways {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin: 1.5rem 0 2.5rem;
+    }
+    .takeaways p.label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.7rem; color: var(--accent); font-weight: 600; margin: 0 0 0.75rem; }
+    .takeaways ul { margin: 0; }
+    .table-wrap { overflow-x: auto; margin: 0 0 1.1rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
+    th { color: var(--muted); font-weight: 600; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+    .cta {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin: 2.5rem 0;
+      text-align: center;
+    }
+    .cta a {
+      display: inline-block;
+      margin-top: 0.75rem;
+      background: var(--fg);
+      color: #000;
+      font-weight: 600;
+      padding: 0.55rem 1.25rem;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 0.75rem;
+      font-size: 0.75rem; color: var(--muted);
+    }
+    footer a { text-decoration: none; margin-left: 1rem; }
+    footer a:hover { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">
+      <img src="/opencontext-logo.png" alt="open-context" />
+      <span>open-context</span>
+    </a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/blog/" class="active">Blog</a>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <div class="meta">November 27, 2026 · 7 min read</div>
+      <h1>MCP Resources vs. Tools: Why open-context Uses Only Tools</h1>
+
+      <p class="lead">
+        MCP defines three primitive types, split by who decides when to use them: tools, which the
+        model invokes on its own; resources, which the host application attaches to context; and
+        prompts, which the user triggers explicitly. <a class="inline-link" href="/">open-context</a>'s
+        MCP server exposes 13 tools and zero resources, because every operation it needs — saving a
+        memory, recalling it, searching across bubbles — depends on the model deciding mid-conversation
+        that it's needed, not on the client deciding ahead of time what to attach.
+      </p>
+
+      <div class="takeaways">
+        <p class="label">Key takeaways</p>
+        <ul>
+          <li>The <a class="inline-link" href="https://modelcontextprotocol.io/specification/2025-11-25/server/tools" target="_blank" rel="noopener noreferrer">MCP 2025-11-25 spec</a> assigns tools to model control, resources to application control, and prompts to user control.</li>
+          <li>open-context's MCP server (<code>src/mcp/server.ts</code>) registers 13 tools — six legacy context tools, five bubble tools, and two canonical v2 context tools — and defines no resources at all.</li>
+          <li>Resources fit data the host app decides to attach regardless of what the model asks for; open-context's job is reactive memory the model calls on demand, which is what tools are for.</li>
+          <li>All 13 tools sit on the same pluggable BYODB store, so the tools-vs-resources choice is independent of which of the 15 supported databases backs it.</li>
+          <li>A resources-based <code>recall_context</code> would move the "should I pull this memory back up" decision out of Claude's hands and into the client's — the opposite of what persistent memory needs.</li>
+        </ul>
+      </div>
+
+      <h2>The three MCP primitives, and who decides when to use them</h2>
+      <p>
+        MCP (Model Context Protocol) gives servers three ways to expose capability to a client, and the
+        spec's own framing sorts them by who is in the driver's seat. The
+        <a class="inline-link" href="https://modelcontextprotocol.io/specification/2025-11-25/server/tools" target="_blank" rel="noopener noreferrer">official specification</a>
+        describes tools as model-controlled: the language model discovers them and decides, from context
+        and the user's request, when to call one. Resources are application-controlled: the client or host
+        app chooses what to attach to the context window, independent of the model's own reasoning. Prompts
+        are user-controlled: templates the user invokes explicitly, like a slash command.
+      </p>
+      <p>
+        That control split is a design recommendation, not a protocol requirement — a server is technically
+        free to expose the same data through either primitive — but it's still the right lens for deciding
+        which one fits a given job. If the decision to use a capability should come from the model reasoning
+        about a request, it belongs in a tool. If it should come from the host application attaching context
+        regardless of what the model is doing, it belongs in a resource.
+      </p>
+
+      <h2>What open-context's MCP server actually exposes</h2>
+      <p>
+        open-context's MCP server (<code>src/mcp/server.ts</code>) is built on
+        <code>@modelcontextprotocol/sdk</code> and defines exactly one kind of capability: tools. There
+        are 13 of them, each registered with <code>server.tool()</code>, and not a single
+        <code>server.resource()</code> call anywhere in the codebase:
+      </p>
+      <ul>
+        <li><code>save_context</code>, <code>recall_context</code>, <code>list_contexts</code>, <code>search_contexts</code>, <code>update_context</code>, <code>delete_context</code> — the original six, covering memory CRUD plus full-text and multi-keyword search.</li>
+        <li><code>create_bubble</code>, <code>list_bubbles</code>, <code>get_bubble</code>, <code>update_bubble</code>, <code>delete_bubble</code> — project-scoped workspaces that group related contexts (see <a class="inline-link" href="/blog/tags-vs-bubbles/">Tags vs. Bubbles</a> for how that grouping works).</li>
+        <li><code>save_canonical_context</code>, <code>query_canonical_context</code> — the newer v2 interface, backed by the same <code>@opencontext/core</code> canonical schema the CLI and web UI share.</li>
+      </ul>
+      <p>
+        Every one of those is something Claude decides to call based on what's happening in the
+        conversation — "remember this," "what did I say about X," "show me everything tagged
+        project-alpha" — not something the client application decides to attach up front. See the
+        <a class="inline-link" href="/blog/mcp-tools-reference/">full tools reference</a> for what each
+        one does and when Claude typically calls it.
+      </p>
+
+      <h2>Why a memory server is tools-shaped, not resources-shaped</h2>
+      <p>
+        The giveaway is in the verbs. <code>save_context</code> and <code>recall_context</code> exist
+        because the moment to act is unpredictable: a user might ask Claude to remember something three
+        messages into an unrelated conversation, or ask "what did I tell you about my deploy process" at
+        any point without warning. Only the model, reasoning over the live conversation, knows when that
+        moment has arrived. A resource can't make that call — resources are meant for the client to
+        attach proactively, like "always include the current file" in an IDE, not for "attach this if and
+        only if the model realizes it's relevant."
+      </p>
+      <p>
+        That's also why open-context's tools take a query or content payload as an argument rather than
+        exposing memory as a browsable URI tree. <code>recall_context</code> and <code>search_contexts</code>
+        behave like a search function, not a file listing — the model supplies intent, the tool returns a
+        result, and the model decides what to do with it next.
+      </p>
+
+      <h2>Where resources would actually be the better fit</h2>
+      <p>
+        None of this makes resources the wrong primitive in general — it means they're the wrong primitive
+        for this particular server. Resources earn their place when the data to attach doesn't depend on
+        the model noticing it's relevant: a fixed project README a host wants in every session's context,
+        a live log tail a dashboard subscribes to, or a config file an IDE extension always wants visible
+        regardless of what the user typed. In those cases the application already knows the data belongs in
+        context, so making the model ask for it through a tool call just adds a round trip for no benefit.
+      </p>
+      <p>
+        If open-context ever shipped a feature like "always surface my active bubble's five most recent
+        contexts at the start of every session," that's exactly the shape of an application-controlled
+        resource, not a model-controlled tool — the client would decide to attach it before the model ever
+        reasons about whether it's needed.
+      </p>
+
+      <h2>The tools-vs-resources choice is separate from the storage choice</h2>
+      <p>
+        It's worth separating this from a different design decision open-context also made: which database
+        backs the context store. <a class="inline-link" href="/blog/byodb-architecture-overview/">BYODB</a>
+        lets the same 13 tools run against any of 15 supported backends — JSON file, SQLite, Postgres,
+        MongoDB, DynamoDB, and more — through one adapter interface. Swapping the backend never changes
+        whether a capability is exposed as a tool or a resource; that choice is about how Claude is allowed
+        to use the data, not where the data physically lives. A future resources-based "pin this context
+        into every session" feature could sit on top of the exact same store without touching the tool
+        definitions at all.
+      </p>
+
+      <div class="cta">
+        <p style="margin:0; color: var(--muted);">Give Claude persistent memory with open-context's MCP server.</p>
+        <a href="/">Get started with open-context →</a>
+      </div>
+
+      <h2>FAQ</h2>
+
+      <h3>What's the practical difference between an MCP tool and an MCP resource?</h3>
+      <p>A tool is something the model decides to call based on the conversation; a resource is something the client or host application decides to attach to context regardless of what the model is doing. The MCP spec labels this model-controlled versus application-controlled.</p>
+
+      <h3>Does open-context's MCP server implement any resources?</h3>
+      <p>No. Its server (<code>src/mcp/server.ts</code>) registers 13 tools via <code>server.tool()</code> and contains no <code>server.resource()</code> calls — every capability it exposes is something Claude chooses to invoke.</p>
+
+      <h3>Why not expose recall_context as a resource instead of a tool?</h3>
+      <p>Because the decision to pull a memory back into context has to come from the model noticing it's relevant mid-conversation, not from the client attaching it ahead of time. That decision-making pattern is exactly what MCP tools are for.</p>
+
+      <h3>Does having 13 tools instead of 6 cost more tokens or slow Claude down?</h3>
+      <p>Tool definitions do add to the context sent with each request, but it's the same tradeoff any MCP server with multiple tools makes. open-context keeps each tool narrowly scoped to one CRUD operation rather than one large multi-purpose tool, which keeps individual descriptions short even as the count grows.</p>
+
+      <h3>Could an MCP server mix tools and resources together?</h3>
+      <p>Yes — the spec supports exposing both, and many servers do, pairing model-invoked actions with application-attached reference data. open-context's current use case just hasn't needed a resource yet.</p>
+    </article>
+  </main>
+
+  <footer>
+    <span>open-context.dev — open source, self-hosted</span>
+    <div>
+      <a href="https://github.com/adityak74/open-context" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a href="https://hub.docker.com/r/adityakarnam/opencontext" target="_blank" rel="noopener noreferrer">Docker Hub</a>
+    </div>
+  </footer>
+</body>
+</html>
